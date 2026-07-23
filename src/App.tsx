@@ -18,6 +18,7 @@ export default function App() {
     login,
     logout,
     saveSegment,
+    deleteSegment,
   } = useGoogleDrive();
 
   const [gpxData, setGpxData] = useState<GPXData | null>(null);
@@ -163,6 +164,15 @@ export default function App() {
 
     if (success) {
       alert("🎉 Segment successfully saved to Google Drive and catalog updated!");
+    }
+  };
+
+  const handleDeleteSegment = async (id: string, name: string) => {
+    if (window.confirm(`Are you sure you want to delete segment "${name}"?`)) {
+      const success = await deleteSegment(id);
+      if (success) {
+        alert("🎉 Segment successfully deleted from Google Drive!");
+      }
     }
   };
 
@@ -393,6 +403,13 @@ export default function App() {
                           {seg.avgGradePercent}% Avg
                         </span>
                       </div>
+                      <button
+                        className="btn-delete-catalog"
+                        onClick={() => handleDeleteSegment(seg.id, seg.name)}
+                        title="Delete Segment"
+                      >
+                        🗑️
+                      </button>
                     </div>
                   ))}
                 </div>

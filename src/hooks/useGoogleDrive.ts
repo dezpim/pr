@@ -288,6 +288,82 @@ export function useGoogleDrive() {
     }
   }, [accessToken, loadCatalog]);
 
+  // Delete a segment and update catalog
+  const deleteSegment = async (segmentId: string): Promise<boolean> => {
+    if (!accessToken) return false;
+    setLoading(true);
+    try {
+      const folderId = await findOrCreateFolder(accessToken);
+      if (!folderId) throw new Error("Could not find app folder");
+
+      // 1. Search for the GPX file ID
+      const query = encodeURIComponent(`name = '${segmentId}' and '${folderId}' in parents and trashed = false`);
+      const checkRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const checkData = await checkRes.json();
+
+      if (checkData.files && checkData.files.length > 0) {
+        const fileId = checkData.files[0].id;
+        // Delete GPX file from Google Drive
+        const delRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!delRes.ok && delRes.status !== 404) {
+          throw new Error("Failed to delete GPX file from Google Drive");
+        }
+      }
+
+      // 2. Filter catalog segments
+      const updatedSegments = catalog.segments.filter((s) => s.id !== segmentId);
+      const newCatalog: Catalog = { segments: updatedSegments };
+
+      // 3. Save new catalog.json
+      const catMetadata = {
+        name: "catalog.json",
+        parents: [folderId],
+      };
+      
+      const catFormData = new FormData();
+      catFormData.append("metadata", new Blob([JSON.stringify(catMetadata)], { type: "application/json" }));
+      catFormData.append("file", new Blob([JSON.stringify(newCatalog, null, 2)], { type: "application/json" }));
+
+      // Find catalog.json file ID
+      const catQuery = encodeURIComponent(`name = 'catalog.json' and '${folderId}' in parents and trashed = false`);
+      const catCheck = await fetch(`https://www.googleapis.com/drive/v3/files?q=${catQuery}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const catCheckData = await catCheck.json();
+
+      let catUploadRes;
+      if (catCheckData.files && catCheckData.files.length > 0) {
+        const catFileId = catCheckData.files[0].id;
+        catUploadRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${catFileId}?uploadType=multipart`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${accessToken}` },
+          body: catFormData,
+        });
+      } else {
+        catUploadRes = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}` },
+          body: catFormData,
+        });
+      }
+
+      if (!catUploadRes.ok) throw new Error("Catalog update failed during deletion");
+
+      setCatalog(newCatalog);
+      return true;
+    } catch (e: any) {
+      alert("Error deleting: " + e.message);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     accessToken,
     clientId,
@@ -298,6 +374,7 @@ export function useGoogleDrive() {
     login,
     logout,
     saveSegment,
+    deleteSegment,
     refreshCatalog: loadCatalog,
   };
 }
