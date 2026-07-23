@@ -501,6 +501,93 @@ export function useGoogleDrive() {
     }
   };
 
+  // Rename an existing segment
+  const renameSegment = async (segmentId: string, newName: string): Promise<boolean> => {
+    if (!accessToken) return false;
+    setLoading(true);
+    try {
+      const folderId = await findOrCreateFolder(accessToken);
+      if (!folderId) throw new Error("Could not find app folder");
+
+      const newFileName = `${newName.replace(/[^a-zA-Z0-9가-힣_]/g, "_")}.gpx`;
+
+      // 1. Search for the old GPX file ID and rename it
+      const query = encodeURIComponent(`name = '${segmentId}' and '${folderId}' in parents and trashed = false`);
+      const checkRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const checkData = await checkRes.json();
+
+      if (checkData.files && checkData.files.length > 0) {
+        const fileId = checkData.files[0].id;
+        const renameRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ name: newFileName }),
+        });
+        if (!renameRes.ok) {
+          const errorText = await renameRes.text();
+          throw new Error(`Failed to rename GPX file: ${renameRes.status} - ${errorText}`);
+        }
+      }
+
+      // 2. Update catalog.json entries
+      const updatedSegments = catalog.segments.map((seg) => {
+        if (seg.id === segmentId) {
+          return { ...seg, id: newFileName, name: newName };
+        }
+        return seg;
+      });
+      const newCatalog: Catalog = { segments: updatedSegments };
+
+      // Save updated catalog.json
+      const catMetadata = { name: "catalog.json" };
+      const catContentBlob = new Blob([JSON.stringify(newCatalog, null, 2)], { type: "application/json" });
+
+      const catQuery = encodeURIComponent(`name = 'catalog.json' and '${folderId}' in parents and trashed = false`);
+      const catCheck = await fetch(`https://www.googleapis.com/drive/v3/files?q=${catQuery}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const catCheckData = await catCheck.json();
+
+      if (catCheckData.files && catCheckData.files.length > 0) {
+        const catFileId = catCheckData.files[0].id;
+        const catUpdateFormData = new FormData();
+        catUpdateFormData.append("metadata", new Blob([JSON.stringify(catMetadata)], { type: "application/json" }));
+        catUpdateFormData.append("file", catContentBlob);
+
+        const catUploadRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${catFileId}?uploadType=multipart`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${accessToken}` },
+          body: catUpdateFormData,
+        });
+        if (!catUploadRes.ok) {
+          const errorText = await catUploadRes.text();
+          throw new Error(`Failed to update catalog.json: ${catUploadRes.status} - ${errorText}`);
+        }
+      }
+
+      // 3. Update rankings.json keys
+      const updatedRankings = { ...rankings };
+      if (updatedRankings[segmentId]) {
+        updatedRankings[newFileName] = updatedRankings[segmentId];
+        delete updatedRankings[segmentId];
+        await saveRankingsToDrive(updatedRankings);
+      }
+
+      setCatalog(newCatalog);
+      return true;
+    } catch (e: any) {
+      alert("Error renaming: " + e.message);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     accessToken,
     clientId,
@@ -513,6 +600,7 @@ export function useGoogleDrive() {
     logout,
     saveSegment,
     deleteSegment,
+    renameSegment,
     addAttemptToCloud,
     deleteAttemptFromCloud,
     refreshCatalog: loadCatalog,

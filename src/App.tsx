@@ -52,6 +52,7 @@ export default function App() {
     logout,
     saveSegment,
     deleteSegment,
+    renameSegment,
     addAttemptToCloud,
     deleteAttemptFromCloud,
   } = useGoogleDrive();
@@ -315,6 +316,20 @@ export default function App() {
         alert("🎉 Segment successfully deleted!");
         if (selectedSegId === id) {
           setSelectedSegId(catalog.segments[0]?.id || "");
+        }
+      }
+    }
+  };
+
+  const handleSegmentRename = async (id: string, currentName: string) => {
+    const newName = window.prompt("Enter new segment name:", currentName);
+    if (newName && newName.trim() && newName.trim() !== currentName) {
+      const success = await renameSegment(id, newName.trim());
+      if (success) {
+        alert("🎉 Segment successfully renamed!");
+        const newFileName = `${newName.trim().replace(/[^a-zA-Z0-9가-힣_]/g, "_")}.gpx`;
+        if (selectedSegId === id) {
+          setSelectedSegId(newFileName);
         }
       }
     }
@@ -602,16 +617,22 @@ export default function App() {
                             {seg.avgGradePercent}% Avg
                           </span>
                         </div>
-                        <button
-                          className="btn-delete-catalog"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleSegmentDelete(seg.id, seg.name);
-                          }}
-                          title="Delete Segment"
-                        >
-                          🗑️
-                        </button>
+                        <div className="catalog-actions" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            className="btn-edit-catalog"
+                            onClick={() => handleSegmentRename(seg.id, seg.name)}
+                            title="Rename Segment"
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            className="btn-delete-catalog"
+                            onClick={() => handleSegmentDelete(seg.id, seg.name)}
+                            title="Delete Segment"
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

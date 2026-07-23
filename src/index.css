@@ -437,11 +437,16 @@ body {
   justify-content: space-between;
 }
 
-.btn-delete-catalog {
+.catalog-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-delete-catalog, .btn-edit-catalog {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 16px;
   padding: 6px;
   border-radius: 6px;
   transition: background-color 0.2s;
@@ -450,8 +455,20 @@ body {
   justify-content: center;
 }
 
+.btn-delete-catalog {
+  font-size: 16px;
+}
+
+.btn-edit-catalog {
+  font-size: 14px;
+}
+
 .btn-delete-catalog:hover {
   background-color: rgba(244, 67, 54, 0.15);
+}
+
+.btn-edit-catalog:hover {
+  background-color: rgba(255, 255, 255, 0.08);
 }
 
 .catalog-info {
