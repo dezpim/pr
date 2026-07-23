@@ -103,9 +103,9 @@ export const MapView: React.FC<MapViewProps> = ({ points, startIndex, endIndex }
       }
     }
 
-    // Adjust map bounds to fit the full path
-    if (fullPathRef.current) {
-      map.fitBounds(fullPathRef.current.getBounds(), { padding: [20, 20] });
+    // Adjust map bounds to fit the segment path so it stays focused!
+    if (segmentPathRef.current) {
+      map.fitBounds(segmentPathRef.current.getBounds(), { padding: [40, 40], maxZoom: 16 });
     }
   }, [points, startIndex, endIndex]);
 

@@ -25,6 +25,7 @@ export default function App() {
   const [endIndex, setEndIndex] = useState<number>(0);
   const [segmentName, setSegmentName] = useState<string>("");
   const [detectedClimbs, setDetectedClimbs] = useState<ClimbCandidate[]>([]);
+  const [climbNames, setClimbNames] = useState<{ [key: number]: string }>({});
   const [selectedClimbIdx, setSelectedClimbIdx] = useState<number>(-1);
   const [showSettings, setShowSettings] = useState<boolean>(!localStorage.getItem("gdrive_client_id"));
   const [tempClientId, setTempClientId] = useState<string>(clientId);
@@ -57,6 +58,13 @@ export default function App() {
         const climbs = detectClimbs(parsed.points);
         setDetectedClimbs(climbs);
         setSelectedClimbIdx(-1);
+
+        // Pre-populate climb names
+        const initialNames: { [key: number]: string } = {};
+        climbs.forEach((_, idx) => {
+          initialNames[idx] = `${parsed.name} - Climb ${idx + 1}`;
+        });
+        setClimbNames(initialNames);
       } catch (err) {
         alert("Failed to parse GPX file. Make sure it's valid XML.");
       }
@@ -74,7 +82,11 @@ export default function App() {
     setStartIndex(climb.startIndex);
     setEndIndex(climb.endIndex);
     setSelectedClimbIdx(idx);
-    setSegmentName(`${gpxData?.name || "Climb"} - Climb ${idx + 1}`);
+    setSegmentName(climbNames[idx] || `${gpxData?.name || "Climb"} - Climb ${idx + 1}`);
+  };
+
+  const handleClimbNameChange = (idx: number, val: string) => {
+    setClimbNames((prev) => ({ ...prev, [idx]: val }));
   };
 
   const handleSaveSettings = () => {
@@ -84,19 +96,50 @@ export default function App() {
     logout();
   };
 
-  // Calculate current segment stats
-  const getSegmentStats = () => {
-    if (!gpxData || gpxData.points.length === 0) return { distance: 0, gain: 0, grade: 0 };
-    const startPt = gpxData.points[startIndex];
-    const endPt = gpxData.points[endIndex];
-    const distance = endPt.distance - startPt.distance;
+  // Calculate segment stats for any range
+  const calculateStatsForRange = (start: number, end: number) => {
+    if (!gpxData || gpxData.points.length === 0) return { dist: 0, gain: 0, grade: 0 };
+    const startPt = gpxData.points[start];
+    const endPt = gpxData.points[end];
+    const dist = endPt.distance - startPt.distance;
     const gain = Math.max(0, endPt.ele - startPt.ele);
-    const grade = distance > 0 ? (gain / distance) * 100 : 0;
-    return { distance, gain, grade };
+    const grade = dist > 0 ? (gain / dist) * 100 : 0;
+    return { dist, gain, grade };
   };
 
-  const { distance, gain, grade } = getSegmentStats();
+  const { dist: distance, gain, grade } = calculateStatsForRange(startIndex, endIndex);
 
+  // Upload inline climb segment from row
+  const handleSaveClimbRow = async (climb: ClimbCandidate, idx: number) => {
+    if (!gpxData) return;
+    const name = climbNames[idx]?.trim() || `Climb ${idx + 1}`;
+
+    // Temporarily set active map/chart segment to this row so the user sees it visually
+    setStartIndex(climb.startIndex);
+    setEndIndex(climb.endIndex);
+    setSelectedClimbIdx(idx);
+
+    const trimmedPoints = gpxData.points.slice(climb.startIndex, climb.endIndex + 1);
+    const gpxXml = generateGPX(name, trimmedPoints);
+
+    const startPt = trimmedPoints[0];
+    const endPt = trimmedPoints[trimmedPoints.length - 1];
+    const stats = calculateStatsForRange(climb.startIndex, climb.endIndex);
+
+    const success = await saveSegment(name, gpxXml, {
+      distanceMeters: parseFloat(stats.dist.toFixed(1)),
+      elevationGainMeters: parseFloat(stats.gain.toFixed(1)),
+      avgGradePercent: parseFloat(stats.grade.toFixed(1)),
+      startCoords: [startPt.lat, startPt.lon],
+      endCoords: [endPt.lat, endPt.lon],
+    });
+
+    if (success) {
+      alert(`🎉 Segment "${name}" successfully saved to Google Drive!`);
+    }
+  };
+
+  // Upload manual trimmed segment
   const handleUploadToDrive = async () => {
     if (!gpxData) return;
     if (!segmentName.trim()) {
@@ -240,7 +283,7 @@ export default function App() {
 
                 {/* Auto Detected Climbs List */}
                 <div className="card climbs-card">
-                  <h3>Auto-Detected Hills</h3>
+                  <h3>Auto-Detected Hills (구간 분리 및 등록)</h3>
                   {detectedClimbs.length > 0 ? (
                     <div className="climbs-list">
                       {detectedClimbs.map((climb, idx) => (
@@ -250,13 +293,34 @@ export default function App() {
                           onClick={() => applyPresetClimb(climb, idx)}
                         >
                           <div className="climb-info">
-                            <span className="climb-name">⛰️ Climb {idx + 1}</span>
+                            <span className="climb-name">⛰️ Hill {idx + 1}</span>
                             <span className="climb-stats">
                               {(climb.distance / 1000).toFixed(2)} km, {climb.elevationGain.toFixed(0)}m Gain,{" "}
-                              {climb.avgGrade.toFixed(1)}% Grade
+                              {climb.avgGrade.toFixed(1)}%
                             </span>
                           </div>
-                          <span className="climb-arrow">→</span>
+                          
+                          {/* Inline Naming and Saving */}
+                          <div className="climb-item-actions">
+                            <input
+                              type="text"
+                              className="climb-name-input"
+                              placeholder="Enter segment name"
+                              value={climbNames[idx] || ""}
+                              onChange={(e) => handleClimbNameChange(idx, e.target.value)}
+                              onClick={(e) => e.stopPropagation()} // Prevent selecting row on click
+                            />
+                            <button
+                              className="btn btn-primary btn-sm"
+                              disabled={loading || !accessToken}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSaveClimbRow(climb, idx);
+                              }}
+                            >
+                              Save
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -269,12 +333,12 @@ export default function App() {
 
                 {/* Save segment to Drive */}
                 <div className="card save-card">
-                  <h3>Register Segment to Google Drive</h3>
+                  <h3>Register Custom Trimmed Segment</h3>
                   <div className="form-group">
                     <label>Segment Name</label>
                     <input
                       type="text"
-                      placeholder="e.g. Namsan Uphill"
+                      placeholder="e.g. Custom Trim Uphill"
                       value={segmentName}
                       onChange={(e) => setSegmentName(e.target.value)}
                     />

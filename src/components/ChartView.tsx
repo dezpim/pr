@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceArea } from "recharts";
 import type { GPXPoint } from "../utils/gpxParser";
 
@@ -10,6 +10,8 @@ interface ChartViewProps {
 }
 
 export const ChartView: React.FC<ChartViewProps> = ({ points, startIndex, endIndex, onTrimChange }) => {
+  const [isZoomed, setIsZoomed] = useState<boolean>(true);
+
   if (points.length === 0) {
     return (
       <div className="empty-chart-placeholder">
@@ -18,12 +20,23 @@ export const ChartView: React.FC<ChartViewProps> = ({ points, startIndex, endInd
     );
   }
 
+  // Calculate zoom range
+  const bufferCount = Math.max(10, Math.floor(points.length * 0.05)); // 5% buffer
+  const zoomStart = isZoomed ? Math.max(0, startIndex - bufferCount) : 0;
+  const zoomEnd = isZoomed ? Math.min(points.length - 1, endIndex + bufferCount) : points.length - 1;
+
+  // Slice points for chart rendering
+  const visiblePoints = points.slice(zoomStart, zoomEnd + 1);
+
   // Format data for Recharts
-  const chartData = points.map((p, idx) => ({
-    index: idx,
-    distanceKm: (p.distance / 1000).toFixed(2),
-    elevation: parseFloat(p.ele.toFixed(1)),
-  }));
+  const chartData = visiblePoints.map((p, idx) => {
+    const originalIdx = zoomStart + idx;
+    return {
+      index: originalIdx,
+      distanceKm: (p.distance / 1000).toFixed(2),
+      elevation: parseFloat(p.ele.toFixed(1)),
+    };
+  });
 
   const handleStartChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseInt(e.target.value);
@@ -39,11 +52,35 @@ export const ChartView: React.FC<ChartViewProps> = ({ points, startIndex, endInd
     }
   };
 
-  const minElevation = Math.floor(Math.min(...points.map((p) => p.ele)) - 10);
-  const maxElevation = Math.ceil(Math.max(...points.map((p) => p.ele)) + 10);
+  // Fine-tuning handlers (+/- 1 index shift)
+  const adjustStart = (amount: number) => {
+    const newStart = Math.max(0, Math.min(endIndex - 1, startIndex + amount));
+    onTrimChange(newStart, endIndex);
+  };
+
+  const adjustEnd = (amount: number) => {
+    const newEnd = Math.max(startIndex + 1, Math.min(points.length - 1, endIndex + amount));
+    onTrimChange(startIndex, newEnd);
+  };
+
+  const visibleElevations = visiblePoints.map((p) => p.ele);
+  const minElevation = Math.floor(Math.min(...visibleElevations) - 5);
+  const maxElevation = Math.ceil(Math.max(...visibleElevations) + 5);
 
   return (
     <div className="chart-view-container">
+      {/* Zoom Toggle Options */}
+      <div className="chart-options-bar">
+        <label className="zoom-toggle-label">
+          <input
+            type="checkbox"
+            checked={isZoomed}
+            onChange={(e) => setIsZoomed(e.target.checked)}
+          />
+          <span className="zoom-label-text">🔍 Zoom to Selected Segment (구간 확대 보기)</span>
+        </label>
+      </div>
+
       {/* 2D Elevation Area Chart */}
       <div className="elevation-chart" style={{ width: "100%", height: "240px" }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -60,8 +97,8 @@ export const ChartView: React.FC<ChartViewProps> = ({ points, startIndex, endInd
             <Area type="monotone" dataKey="elevation" stroke="#8884d8" fill="url(#colorEle)" strokeWidth={1} />
             {/* Highlight selected segment area */}
             <ReferenceArea
-              x1={chartData[startIndex]?.distanceKm}
-              x2={chartData[endIndex]?.distanceKm}
+              x1={points[startIndex]?.distance ? (points[startIndex].distance / 1000).toFixed(2) : undefined}
+              x2={points[endIndex]?.distance ? (points[endIndex].distance / 1000).toFixed(2) : undefined}
               fill="#1A73E8"
               fillOpacity={0.25}
             />
@@ -77,25 +114,20 @@ export const ChartView: React.FC<ChartViewProps> = ({ points, startIndex, endInd
 
       {/* Dual Range Trimming Slider Controls */}
       <div className="slider-controls-wrapper">
-        <div className="slider-labels">
-          <span>Start Point: {(points[startIndex]?.distance / 1000).toFixed(2)} km</span>
-          <span>Finish Point: {(points[endIndex]?.distance / 1000).toFixed(2)} km</span>
-        </div>
-        
         <div className="dual-slider-container">
           <input
             type="range"
-            min="0"
-            max={points.length - 1}
+            min={zoomStart}
+            max={zoomEnd}
             value={startIndex}
             onChange={handleStartChange}
             className="thumb thumb--left"
-            style={{ zIndex: startIndex > points.length / 2 ? "5" : "3" }}
+            style={{ zIndex: startIndex > (zoomStart + zoomEnd) / 2 ? "5" : "3" }}
           />
           <input
             type="range"
-            min="0"
-            max={points.length - 1}
+            min={zoomStart}
+            max={zoomEnd}
             value={endIndex}
             onChange={handleEndChange}
             className="thumb thumb--right"
@@ -105,10 +137,31 @@ export const ChartView: React.FC<ChartViewProps> = ({ points, startIndex, endInd
           <div
             className="slider-range-highlight"
             style={{
-              left: `${(startIndex / (points.length - 1)) * 100}%`,
-              width: `${((endIndex - startIndex) / (points.length - 1)) * 100}%`,
+              left: `${((startIndex - zoomStart) / (zoomEnd - zoomStart)) * 100}%`,
+              width: `${((endIndex - startIndex) / (zoomEnd - zoomStart)) * 100}%`,
             }}
           />
+        </div>
+
+        {/* Fine-tuning buttons for absolute precision */}
+        <div className="fine-tuning-container">
+          <div className="fine-tuning-group">
+            <span className="tune-label">Start (시작선)</span>
+            <div className="tune-buttons">
+              <button className="btn btn-secondary btn-sm" onClick={() => adjustStart(-1)}>◀ -10m</button>
+              <span className="tune-value">{(points[startIndex]?.distance / 1000).toFixed(3)} km</span>
+              <button className="btn btn-secondary btn-sm" onClick={() => adjustStart(1)}>+10m ▶</button>
+            </div>
+          </div>
+
+          <div className="fine-tuning-group">
+            <span className="tune-label">Finish (종료선)</span>
+            <div className="tune-buttons">
+              <button className="btn btn-secondary btn-sm" onClick={() => adjustEnd(-1)}>◀ -10m</button>
+              <span className="tune-value">{(points[endIndex]?.distance / 1000).toFixed(3)} km</span>
+              <button className="btn btn-secondary btn-sm" onClick={() => adjustEnd(1)}>+10m ▶</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
