@@ -4,6 +4,9 @@ export interface GPXPoint {
   ele: number; // elevation in meters
   time?: string;
   distance: number; // cumulative distance in meters
+  hr?: number;
+  power?: number;
+  cadence?: number;
 }
 
 export interface GPXData {
@@ -52,6 +55,16 @@ export function parseGPX(xmlText: string): GPXData {
     const timeNode = trkpt.querySelector("time");
     const time = timeNode ? timeNode.textContent || undefined : undefined;
 
+    // Parse sensor data (handling potential namespaces like gpxtpx:hr, etc.)
+    const hrNode = trkpt.querySelector("hr") || trkpt.querySelector("gpxtpx\\:hr") || trkpt.querySelector("*|hr");
+    const hr = hrNode ? parseInt(hrNode.textContent || "0", 10) : undefined;
+
+    const cadNode = trkpt.querySelector("cad") || trkpt.querySelector("gpxtpx\\:cad") || trkpt.querySelector("*|cad") || trkpt.querySelector("cadence");
+    const cadence = cadNode ? parseInt(cadNode.textContent || "0", 10) : undefined;
+
+    const powerNode = trkpt.querySelector("power") || trkpt.querySelector("gpxtpx\\:power") || trkpt.querySelector("*|power");
+    const power = powerNode ? parseInt(powerNode.textContent || "0", 10) : undefined;
+
     if (i > 0) {
       const prev = points[i - 1];
       accumDistance += calculateDistance(prev.lat, prev.lon, lat, lon);
@@ -63,6 +76,9 @@ export function parseGPX(xmlText: string): GPXData {
       ele,
       time,
       distance: accumDistance,
+      hr: hr && !isNaN(hr) ? hr : undefined,
+      power: power && !isNaN(power) ? power : undefined,
+      cadence: cadence && !isNaN(cadence) ? cadence : undefined,
     });
   }
 
@@ -87,6 +103,17 @@ export function generateGPX(name: string, points: GPXPoint[]): string {
     }
     if (pt.time) {
       xml += `        <time>${pt.time}</time>\n`;
+    }
+    if (pt.hr !== undefined || pt.cadence !== undefined || pt.power !== undefined) {
+      xml += '        <extensions>\n';
+      xml += '          <gpxtpx:TrackPointExtension xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">\n';
+      if (pt.hr !== undefined) xml += `            <gpxtpx:hr>${pt.hr}</gpxtpx:hr>\n`;
+      if (pt.cadence !== undefined) xml += `            <gpxtpx:cad>${pt.cadence}</gpxtpx:cad>\n`;
+      xml += '          </gpxtpx:TrackPointExtension>\n';
+      if (pt.power !== undefined) {
+        xml += `          <power>${pt.power}</power>\n`;
+      }
+      xml += '        </extensions>\n';
     }
     xml += '      </trkpt>\n';
   });

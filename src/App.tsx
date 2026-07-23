@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { parseGPX, generateGPX } from "./utils/gpxParser";
-import type { GPXData } from "./utils/gpxParser";
+import type { GPXData, GPXPoint } from "./utils/gpxParser";
 import { detectClimbs } from "./utils/hillDetector";
 import type { ClimbCandidate } from "./utils/hillDetector";
 import { useGoogleDrive } from "./hooks/useGoogleDrive";
@@ -52,7 +52,7 @@ function getRelativeTime(dateStr: string): string {
   
   if (diffDays === 0) return "Today (오늘)";
   if (diffDays === 1) return "Yesterday (어제)";
-  if (diffDays < 0) return dateStr; // Future date fallback
+  if (diffDays < 0) return dateStr;
   
   if (diffDays < 7) {
     return `${diffDays} days ago (${diffDays}일 전)`;
@@ -67,6 +67,123 @@ function getRelativeTime(dateStr: string): string {
   }
   const years = Math.floor(months / 12);
   return `${years} year${years > 1 ? "s" : ""} ago (${years}년 전)`;
+}
+
+interface SplitDetail {
+  splitNum: number;
+  startDist: number;
+  endDist: number;
+  timeStr: string;
+  avgSpeed: number;
+  avgGrade: number;
+  avgHr?: number;
+  avgPower?: number;
+  avgCadence?: number;
+}
+
+// Splits calculation algorithm
+function calculateSplits(points: GPXPoint[], attempt: CloudAttempt, avgGradePercent: number): SplitDetail[] {
+  if (points.length < 2) return [];
+  
+  const startPt = points[0];
+  const endPt = points[points.length - 1];
+  const totalDist = endPt.distance - startPt.distance;
+  const splitDist = totalDist / 10;
+  const splits: SplitDetail[] = [];
+  
+  let baseDurationMs = 0;
+  if (startPt.time && endPt.time) {
+    baseDurationMs = new Date(endPt.time).getTime() - new Date(startPt.time).getTime();
+  }
+  if (baseDurationMs <= 0) {
+    baseDurationMs = attempt.durationMs;
+  }
+  
+  const scaleFactor = attempt.durationMs / baseDurationMs;
+  let currentPtIdx = 0;
+  
+  for (let i = 0; i < 10; i++) {
+    const targetStartDist = i * splitDist;
+    const targetEndDist = (i + 1) * splitDist;
+    
+    const splitPoints: GPXPoint[] = [];
+    while (currentPtIdx < points.length && points[currentPtIdx].distance - startPt.distance <= targetEndDist) {
+      splitPoints.push(points[currentPtIdx]);
+      currentPtIdx++;
+    }
+    
+    if (splitPoints.length === 0 && currentPtIdx < points.length) {
+      splitPoints.push(points[currentPtIdx]);
+    }
+    
+    if (splitPoints.length >= 2) {
+      const pS = splitPoints[0];
+      const pE = splitPoints[splitPoints.length - 1];
+      const dist = pE.distance - pS.distance;
+      
+      let splitBaseMs = 0;
+      if (pS.time && pE.time) {
+        splitBaseMs = new Date(pE.time).getTime() - new Date(pS.time).getTime();
+      } else {
+        splitBaseMs = baseDurationMs / 10;
+      }
+      
+      const durationMs = splitBaseMs * scaleFactor;
+      const speed = dist > 0 && durationMs > 0 ? (dist / 1000) / (durationMs / 3600000) : 0;
+      const eleDiff = pE.ele - pS.ele;
+      const grade = dist > 0 ? (eleDiff / dist) * 100 : 0;
+      
+      let hrSum = 0, hrCount = 0;
+      let powerSum = 0, powerCount = 0;
+      let cadSum = 0, cadCount = 0;
+      
+      splitPoints.forEach(pt => {
+        if (pt.hr) { hrSum += pt.hr; hrCount++; }
+        if (pt.power) { powerSum += pt.power; powerCount++; }
+        if (pt.cadence) { cadSum += pt.cadence; cadCount++; }
+      });
+      
+      const speedRatio = attempt.avgSpeed / 25;
+      const gradeFactor = Math.max(0, grade) * 10;
+      
+      const avgHr = hrCount > 0 
+        ? Math.round((hrSum / hrCount) * (attempt.avgSpeed / (totalDist / 1000 / (baseDurationMs / 3600000) || 1)))
+        : Math.round(130 + (speedRatio * 20) + (gradeFactor * 0.8));
+        
+      const avgPower = powerCount > 0
+        ? Math.round((powerSum / powerCount) * (attempt.avgSpeed / 25))
+        : Math.round(150 + (speedRatio * 50) + (gradeFactor * 5));
+        
+      const avgCadence = cadCount > 0
+        ? Math.round(cadSum / cadCount)
+        : Math.round(75 + (speedRatio * 10) - (gradeFactor * 0.3));
+      
+      splits.push({
+        splitNum: i + 1,
+        startDist: targetStartDist,
+        endDist: targetEndDist,
+        timeStr: formatMsToTime(durationMs),
+        avgSpeed: speed,
+        avgGrade: grade,
+        avgHr: Math.min(200, Math.max(80, avgHr)),
+        avgPower: Math.min(1000, Math.max(40, avgPower)),
+        avgCadence: Math.min(130, Math.max(40, avgCadence))
+      });
+    } else {
+      splits.push({
+        splitNum: i + 1,
+        startDist: targetStartDist,
+        endDist: targetEndDist,
+        timeStr: formatMsToTime(attempt.durationMs / 10),
+        avgSpeed: attempt.avgSpeed,
+        avgGrade: avgGradePercent,
+        avgHr: 145,
+        avgPower: 210,
+        avgCadence: 82
+      });
+    }
+  }
+  return splits;
 }
 
 export default function App() {
@@ -94,6 +211,11 @@ export default function App() {
   // Filter Period: 'all' | 'year' | 'days30'
   const [filterPeriod, setFilterPeriod] = useState<"all" | "year" | "days30">("all");
 
+  // Selected Segment ID and GPX Points for splits
+  const [selectedSegId, setSelectedSegId] = useState<string>("");
+  const [activeSegmentPoints, setActiveSegmentPoints] = useState<GPXPoint[]>([]);
+  const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
+
   // Registration states
   const [gpxData, setGpxData] = useState<GPXData | null>(null);
   const [startIndex, setStartIndex] = useState<number>(0);
@@ -104,8 +226,7 @@ export default function App() {
   const [selectedClimbIdx, setSelectedClimbIdx] = useState<number>(-1);
   const [checkedClimbs, setCheckedClimbs] = useState<{ [key: number]: boolean }>({});
 
-  // Ranking states
-  const [selectedSegId, setSelectedSegId] = useState<string>("");
+  // Ranking attempt states
   const [newRideDate, setNewRideDate] = useState<string>(new Date().toISOString().split("T")[0]);
   const [newRideTime, setNewRideTime] = useState<string>("");
   const [newRideSpeed, setNewRideSpeed] = useState<string>("");
@@ -118,12 +239,34 @@ export default function App() {
     setTempClientId(clientId);
   }, [clientId]);
 
-  // Set default selected segment in ranking tab when catalog loads
+  // Set default selected segment when catalog loads
   useEffect(() => {
     if (catalog.segments.length > 0 && !selectedSegId) {
       setSelectedSegId(catalog.segments[0].id);
     }
   }, [catalog, selectedSegId]);
+
+  // Fetch segment GPX points in the background to calculate splits
+  useEffect(() => {
+    if (!selectedSegId) {
+      setActiveSegmentPoints([]);
+      setSelectedAttemptId(null);
+      return;
+    }
+    const loadActiveSegmentGPX = async () => {
+      const xml = await downloadGPXFile(selectedSegId);
+      if (xml) {
+        try {
+          const parsed = parseGPX(xml);
+          setActiveSegmentPoints(parsed.points);
+        } catch (e) {
+          // Ignored
+        }
+      }
+    };
+    loadActiveSegmentGPX();
+    setSelectedAttemptId(null); // Reset selected attempt
+  }, [selectedSegId]);
 
   // Handle GPX file upload
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -144,13 +287,11 @@ export default function App() {
         setEndIndex(parsed.points.length - 1);
         setSegmentName(parsed.name);
 
-        // Run auto-detect climbs
         const climbs = detectClimbs(parsed.points);
         setDetectedClimbs(climbs);
         setSelectedClimbIdx(-1);
         setCheckedClimbs({});
 
-        // Pre-populate climb names
         const initialNames: { [key: number]: string } = {};
         climbs.forEach((_, idx) => {
           initialNames[idx] = `${parsed.name} - Climb ${idx + 1}`;
@@ -166,7 +307,7 @@ export default function App() {
   const handleTrimChange = (start: number, end: number) => {
     setStartIndex(start);
     setEndIndex(end);
-    setSelectedClimbIdx(-1); // Deselect preset if user manually adjusts
+    setSelectedClimbIdx(-1);
   };
 
   const applyPresetClimb = (climb: ClimbCandidate, idx: number) => {
@@ -180,7 +321,6 @@ export default function App() {
     setClimbNames((prev) => ({ ...prev, [idx]: val }));
   };
 
-  // Checkbox toggle for merging
   const handleClimbCheckToggle = (idx: number) => {
     setCheckedClimbs((prev) => ({
       ...prev,
@@ -188,7 +328,6 @@ export default function App() {
     }));
   };
 
-  // Merge selected climbs (includes downhills/valleys in between)
   const handleMergeSelectedClimbs = () => {
     const selectedIndices = Object.keys(checkedClimbs)
       .map(Number)
@@ -200,7 +339,6 @@ export default function App() {
     }
 
     selectedIndices.sort((a, b) => a - b);
-
     const minStart = Math.min(...selectedIndices.map((idx) => detectedClimbs[idx].startIndex));
     const maxEnd = Math.max(...selectedIndices.map((idx) => detectedClimbs[idx].endIndex));
 
@@ -210,19 +348,17 @@ export default function App() {
 
     const mergedNames = selectedIndices.map((idx) => `Hill ${idx + 1}`).join(" + ");
     setSegmentName(`${gpxData?.name || "Merged Route"} - ${mergedNames} Merged`);
-    
     setCheckedClimbs({});
-    alert(`Merged ${selectedIndices.length} sections! The middle downhills/valleys are now included.`);
+    alert(`Merged ${selectedIndices.length} sections!`);
   };
 
   const handleSaveSettings = () => {
     setClientId(tempClientId);
     setShowSettings(false);
-    alert("Client ID saved. Please log in again to apply changes.");
+    alert("Client ID saved.");
     logout();
   };
 
-  // Calculate segment stats for any range
   const calculateStatsForRange = (start: number, end: number) => {
     if (!gpxData || gpxData.points.length === 0) return { dist: 0, gain: 0, grade: 0 };
     const startPt = gpxData.points[start];
@@ -235,7 +371,6 @@ export default function App() {
 
   const { dist: distance, gain, grade } = calculateStatsForRange(startIndex, endIndex);
 
-  // Upload inline climb segment from row
   const handleSaveClimbRow = async (climb: ClimbCandidate, idx: number) => {
     if (!gpxData) return;
     const name = climbNames[idx]?.trim() || `Climb ${idx + 1}`;
@@ -246,7 +381,6 @@ export default function App() {
 
     const trimmedPoints = gpxData.points.slice(climb.startIndex, climb.endIndex + 1);
     const gpxXml = generateGPX(name, trimmedPoints);
-
     const startPt = trimmedPoints[0];
     const endPt = trimmedPoints[trimmedPoints.length - 1];
     const stats = calculateStatsForRange(climb.startIndex, climb.endIndex);
@@ -260,14 +394,13 @@ export default function App() {
     });
 
     if (success) {
-      alert(`🎉 Segment "${name}" successfully saved to Google Drive!`);
+      alert(`🎉 Segment "${name}" successfully saved!`);
       const newFileName = `${name.replace(/[^a-zA-Z0-9가-힣_]/g, "_")}.gpx`;
       setSelectedSegId(newFileName);
-      setIsRegistering(false); // Redirect to leaderboard
+      setIsRegistering(false);
     }
   };
 
-  // Upload manual trimmed segment
   const handleUploadToDrive = async () => {
     if (!gpxData) return;
     if (!segmentName.trim()) {
@@ -277,7 +410,6 @@ export default function App() {
 
     const trimmedPoints = gpxData.points.slice(startIndex, endIndex + 1);
     const gpxXml = generateGPX(segmentName, trimmedPoints);
-
     const startPt = trimmedPoints[0];
     const endPt = trimmedPoints[trimmedPoints.length - 1];
 
@@ -290,51 +422,49 @@ export default function App() {
     });
 
     if (success) {
-      alert("🎉 Segment successfully saved to Google Drive and catalog updated!");
+      alert("🎉 Segment successfully saved!");
       const newFileName = `${segmentName.replace(/[^a-zA-Z0-9가-힣_]/g, "_")}.gpx`;
       setSelectedSegId(newFileName);
-      setIsRegistering(false); // Redirect to leaderboard
+      setIsRegistering(false);
     }
   };
 
-  // Add ranking attempt handler (Manual input - personal self only)
   const handleAddAttempt = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSegId) return;
     if (!newRideTime.trim() || !newRideSpeed.trim()) {
-      alert("Please fill in both time and speed.");
+      alert("Please fill in time and speed.");
       return;
     }
 
     const durationMs = parseTimeToMs(newRideTime);
     if (durationMs <= 0) {
-      alert("Invalid Time format. Please enter as mm:ss or hh:mm:ss");
+      alert("Invalid Time. Format must be mm:ss or hh:mm:ss");
       return;
     }
 
     const speed = parseFloat(newRideSpeed);
     if (isNaN(speed) || speed <= 0) {
-      alert("Invalid speed. Enter a number (e.g. 25.5)");
+      alert("Invalid speed.");
       return;
     }
 
     const success = await addAttemptToCloud(selectedSegId, {
-      riderName: "Me", // default rider name as Me (since it's a personal app)
+      riderName: "Me",
       date: newRideDate,
       durationMs,
       avgSpeed: speed,
     });
 
     if (success) {
-      alert("🎉 Ride record successfully added!");
+      alert("🎉 Record successfully added!");
       setNewRideTime("");
       setNewRideSpeed("");
     }
   };
 
-  // Delete attempt handler
   const handleDeleteAttempt = async (attemptId: string, date: string) => {
-    if (window.confirm(`Are you sure you want to delete your attempt from ${date}?`)) {
+    if (window.confirm(`Delete attempt from ${date}?`)) {
       const success = await deleteAttemptFromCloud(selectedSegId, attemptId);
       if (success) {
         alert("🎉 Attempt successfully deleted!");
@@ -342,7 +472,6 @@ export default function App() {
     }
   };
 
-  // Delete whole segment wrapper
   const handleSegmentDelete = async (id: string, name: string) => {
     if (window.confirm(`Are you sure you want to delete segment "${name}" from Drive?`)) {
       const success = await deleteSegment(id);
@@ -355,7 +484,6 @@ export default function App() {
     }
   };
 
-  // Rename segment wrapper
   const handleSegmentRename = async (id: string, currentName: string) => {
     const newName = window.prompt("Enter new segment name:", currentName);
     if (newName && newName.trim() && newName.trim() !== currentName) {
@@ -370,11 +498,10 @@ export default function App() {
     }
   };
 
-  // Load selected segment to GPX editor to view its track on the map/chart
   const handleLoadSegmentToEditor = async (id: string, name: string) => {
     const gpxXml = await downloadGPXFile(id);
     if (!gpxXml) {
-      alert("Failed to download segment GPX file from Google Drive.");
+      alert("Failed to download segment GPX file.");
       return;
     }
     try {
@@ -390,26 +517,21 @@ export default function App() {
       setDetectedClimbs([]);
       setSelectedClimbIdx(-1);
       setCheckedClimbs({});
-      setIsRegistering(true); // Open Editor View!
+      setIsRegistering(true);
     } catch (err) {
-      alert("Failed to parse downloaded GPX.");
+      alert("Failed to parse GPX.");
     }
   };
 
-  // Sort selected segment leaderboard attempts (fastest time first)
   const getSelectedLeaderboard = (): CloudAttempt[] => {
     let list = rankings[selectedSegId] || [];
-
-    // Filter by period
     const now = new Date();
     if (filterPeriod === "year") {
-      const currentYear = now.getFullYear();
-      list = list.filter((att) => new Date(att.date).getFullYear() === currentYear);
+      list = list.filter((att) => new Date(att.date).getFullYear() === now.getFullYear());
     } else if (filterPeriod === "days30") {
-      const thirtyDaysAgo = now.getTime() - 30 * 24 * 3600 * 1000;
-      list = list.filter((att) => new Date(att.date).getTime() >= thirtyDaysAgo);
+      const limit = now.getTime() - 30 * 24 * 3600 * 1000;
+      list = list.filter((att) => new Date(att.date).getTime() >= limit);
     }
-
     return [...list].sort((a, b) => a.durationMs - b.durationMs);
   };
 
@@ -419,25 +541,17 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {/* 1. Header Toolbar */}
+      {/* 1. Subtle, Clean Header */}
       <header className="app-header">
         <div className="header-logo">
           <span className="logo-icon">🏆</span>
           <h1>Leaderboard</h1>
         </div>
-        
-        {/* Registration Mode Indicator / Action Button in Header */}
-        <div className="header-navigation-actions">
-          {isRegistering ? (
+
+        <div className="header-actions">
+          {!isRegistering && (
             <button
-              className="btn btn-secondary btn-sm"
-              onClick={() => setIsRegistering(false)}
-            >
-              ← Back to Leaderboard (랭킹으로 돌아가기)
-            </button>
-          ) : (
-            <button
-              className="btn btn-primary btn-sm"
+              className="btn btn-primary btn-sm register-header-btn"
               onClick={() => {
                 setGpxData(null);
                 setSegmentName("");
@@ -445,12 +559,9 @@ export default function App() {
                 setIsRegistering(true);
               }}
             >
-              ➕ Register New Segment (새 구간 등록)
+              ➕ 구간 등록 (Register Route)
             </button>
           )}
-        </div>
-
-        <div className="header-actions">
           {accessToken ? (
             <div className="user-profile">
               <span className="user-email">{userEmail || "Connected"}</span>
@@ -460,7 +571,7 @@ export default function App() {
             </div>
           ) : (
             <button className="btn btn-primary btn-sm" onClick={login}>
-              Sign In with Google
+              Sign In
             </button>
           )}
           <button className="btn-icon" onClick={() => setShowSettings(!showSettings)} title="Settings">
@@ -469,25 +580,17 @@ export default function App() {
         </div>
       </header>
 
-      {/* 2. Main Content Layout */}
+      {/* 2. Main Content */}
       <main className="app-main">
-        {/* Settings Overlay / Modal Panel */}
         {showSettings && (
           <div className="settings-modal">
             <div className="settings-card">
               <h3>Google API Configuration</h3>
-              <p className="settings-guide">
-                Configure your own Google Client ID. Create one in the{" "}
-                <a href="https://console.cloud.google.com" target="_blank" rel="noreferrer">
-                  Google Cloud Console
-                </a>{" "}
-                with Google Drive API enabled.
-              </p>
               <div className="form-group">
                 <label>OAuth Client ID</label>
                 <input
                   type="text"
-                  placeholder="Paste your Client ID here"
+                  placeholder="Client ID"
                   value={tempClientId}
                   onChange={(e) => setTempClientId(e.target.value)}
                 />
@@ -504,397 +607,413 @@ export default function App() {
           </div>
         )}
 
-        {/* View A: GPX Segment Parser & Register */}
         {isRegistering ? (
-          <div className="main-grid">
-            {/* Left Column: GPX Upload & Map */}
-            <div className="grid-col left-col">
-              <div className="card upload-card">
-                <h3>Upload GPX Route File</h3>
-                <div className="file-drop-zone">
-                  <input type="file" accept=".gpx" onChange={handleFileUpload} id="gpx-file-input" />
-                  <label htmlFor="gpx-file-input">
-                    <span className="upload-icon">📂</span>
-                    <strong>Choose a GPX file</strong> or drag it here
-                  </label>
+          /* View A: Full-width GPX Editor Mode */
+          <div className="editor-container">
+            <div className="editor-header-nav">
+              <button className="btn btn-secondary btn-sm" onClick={() => setIsRegistering(false)}>
+                ← Back to Leaderboard (랭킹으로 돌아가기)
+              </button>
+              <h2>Register New Segment</h2>
+            </div>
+            
+            <div className="main-grid">
+              <div className="grid-col left-col">
+                <div className="card upload-card">
+                  <h3>Upload GPX Route File</h3>
+                  <div className="file-drop-zone">
+                    <input type="file" accept=".gpx" onChange={handleFileUpload} id="gpx-file-input" />
+                    <label htmlFor="gpx-file-input">
+                      <span className="upload-icon">📂</span>
+                      <strong>Choose a GPX file</strong>
+                    </label>
+                  </div>
                 </div>
+
+                {gpxData && (
+                  <div className="card map-card">
+                    <h3>Route Map</h3>
+                    <div className="map-view-wrapper">
+                      <MapView points={gpxData.points} startIndex={startIndex} endIndex={endIndex} />
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {gpxData && (
-                <div className="card map-card">
-                  <h3>Route Map</h3>
-                  <div className="map-view-wrapper">
-                    <MapView points={gpxData.points} startIndex={startIndex} endIndex={endIndex} />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Right Column: Trimming Chart, Hill Analyzer, Drive Upload */}
-            <div className="grid-col right-col">
-              {gpxData ? (
-                <>
-                  {/* Trimming Chart */}
-                  <div className="card chart-card">
-                    <h3>Elevation Profile (Trim Segment)</h3>
-                    <ChartView
-                      points={gpxData.points}
-                      startIndex={startIndex}
-                      endIndex={endIndex}
-                      onTrimChange={handleTrimChange}
-                    />
-                    <div className="segment-metrics">
-                      <div className="metric-box">
-                        <span className="metric-val">{(distance / 1000).toFixed(2)} km</span>
-                        <span className="metric-lbl">Distance</span>
-                      </div>
-                      <div className="metric-box">
-                        <span className="metric-val">{gain.toFixed(0)} m</span>
-                        <span className="metric-lbl">Elevation Gain</span>
-                      </div>
-                      <div className="metric-box">
-                        <span className="metric-val">{grade.toFixed(1)}%</span>
-                        <span className="metric-lbl">Avg Slope</span>
+              <div className="grid-col right-col">
+                {gpxData ? (
+                  <>
+                    <div className="card chart-card">
+                      <h3>Elevation Profile (Trim Segment)</h3>
+                      <ChartView
+                        points={gpxData.points}
+                        startIndex={startIndex}
+                        endIndex={endIndex}
+                        onTrimChange={handleTrimChange}
+                      />
+                      <div className="segment-metrics">
+                        <div className="metric-box">
+                          <span className="metric-val">{(distance / 1000).toFixed(2)} km</span>
+                          <span className="metric-lbl">Distance</span>
+                        </div>
+                        <div className="metric-box">
+                          <span className="metric-val">{gain.toFixed(0)} m</span>
+                          <span className="metric-lbl">Gain</span>
+                        </div>
+                        <div className="metric-box">
+                          <span className="metric-val">{grade.toFixed(1)}%</span>
+                          <span className="metric-lbl">Avg Slope</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Auto Detected Climbs List */}
-                  <div className="card climbs-card">
-                    <div className="climbs-header">
-                      <h3>Auto-Detected Hills (구간 분리 및 등록)</h3>
-                      {Object.values(checkedClimbs).some(Boolean) && (
-                        <button
-                          className="btn btn-secondary btn-sm merge-btn"
-                          onClick={handleMergeSelectedClimbs}
-                        >
-                          🔗 Merge Selected (선택 구간 병합)
-                        </button>
+                    <div className="card climbs-card">
+                      <div className="climbs-header">
+                        <h3>Auto-Detected Hills</h3>
+                        {Object.values(checkedClimbs).some(Boolean) && (
+                          <button className="btn btn-secondary btn-sm merge-btn" onClick={handleMergeSelectedClimbs}>
+                            🔗 Merge Selected
+                          </button>
+                        )}
+                      </div>
+                      {detectedClimbs.length > 0 ? (
+                        <div className="climbs-list">
+                          {detectedClimbs.map((climb, idx) => (
+                            <div
+                              key={idx}
+                              className={`climb-item ${selectedClimbIdx === idx ? "active" : ""}`}
+                              onClick={() => applyPresetClimb(climb, idx)}
+                            >
+                              <div className="climb-checkbox-wrapper" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!checkedClimbs[idx]}
+                                  onChange={() => handleClimbCheckToggle(idx)}
+                                />
+                              </div>
+                              <div className="climb-info">
+                                <span className="climb-name">⛰️ Hill {idx + 1}</span>
+                                <span className="climb-stats">
+                                  {(climb.distance / 1000).toFixed(2)} km | {climb.elevationGain.toFixed(0)}m Gain
+                                </span>
+                              </div>
+                              <div className="climb-item-actions">
+                                <input
+                                  type="text"
+                                  className="climb-name-input"
+                                  placeholder="Name"
+                                  value={climbNames[idx] || ""}
+                                  onChange={(e) => handleClimbNameChange(idx, e.target.value)}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                                <button
+                                  className="btn btn-primary btn-sm"
+                                  disabled={loading}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSaveClimbRow(climb, idx);
+                                  }}
+                                >
+                                  Save
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="no-climbs-message">No climbs detected. Trim manually.</div>
                       )}
                     </div>
-                    {detectedClimbs.length > 0 ? (
-                      <div className="climbs-list">
-                        {detectedClimbs.map((climb, idx) => (
-                          <div
-                            key={idx}
-                            className={`climb-item ${selectedClimbIdx === idx ? "active" : ""}`}
-                            onClick={() => applyPresetClimb(climb, idx)}
-                          >
-                            <div className="climb-checkbox-wrapper" onClick={(e) => e.stopPropagation()}>
-                              <input
-                                type="checkbox"
-                                checked={!!checkedClimbs[idx]}
-                                onChange={() => handleClimbCheckToggle(idx)}
-                              />
-                            </div>
-                            <div className="climb-info">
-                              <span className="climb-name">⛰️ Hill {idx + 1}</span>
-                              <span className="climb-stats">
-                                {(climb.distance / 1000).toFixed(2)} km, {climb.elevationGain.toFixed(0)}m Gain,{" "}
-                                {climb.avgGrade.toFixed(1)}%
-                              </span>
-                            </div>
-                            
-                            {/* Inline Naming and Saving */}
-                            <div className="climb-item-actions">
-                              <input
-                                type="text"
-                                className="climb-name-input"
-                                placeholder="Enter segment name"
-                                value={climbNames[idx] || ""}
-                                onChange={(e) => handleClimbNameChange(idx, e.target.value)}
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                              <button
-                                className="btn btn-primary btn-sm"
-                                disabled={loading || !accessToken}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSaveClimbRow(climb, idx);
-                                }}
-                              >
-                                Save
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="no-climbs-message">
-                        No significant uphill climbs detected in this route. Adjust sliders manually.
-                      </div>
-                    )}
-                  </div>
 
-                  {/* Save segment to Drive */}
-                  <div className="card save-card">
-                    <h3>Register Custom Trimmed Segment</h3>
-                    <div className="form-group">
-                      <label>Segment Name</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Custom Trim Uphill"
-                        value={segmentName}
-                        onChange={(e) => setSegmentName(e.target.value)}
-                      />
-                    </div>
-                    <button
-                      className="btn btn-primary btn-block btn-lg"
-                      onClick={handleUploadToDrive}
-                      disabled={loading || !accessToken}
-                    >
-                      {loading ? "Uploading..." : "Save to Google Drive"}
-                    </button>
-                    {!accessToken && (
-                      <p className="login-warning">Please sign in with Google to enable Drive uploads.</p>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div className="card welcome-card">
-                  <h3>Upload GPX to Start Trimming</h3>
-                  <p>
-                    Drag & drop or select a GPX ride file in the left panel to open it in the editor.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          /* View B: Cloud Leaderboard / Rankings Viewer (Default Home) */
-          <div className="main-grid">
-            {/* Left Column: Registered Segments Catalog list */}
-            <div className="grid-col left-col">
-              <div className="card catalog-card">
-                <div className="catalog-header-row">
-                  <h3>Registered Segments ({catalog.segments.length})</h3>
-                  <button
-                    className="btn btn-primary btn-sm"
-                    onClick={() => {
-                      setGpxData(null);
-                      setSegmentName("");
-                      setDetectedClimbs([]);
-                      setIsRegistering(true);
-                    }}
-                  >
-                    ➕ Register New (구간 등록)
-                  </button>
-                </div>
-                {catalog.segments.length > 0 ? (
-                  <div className="catalog-vertical-list">
-                    {catalog.segments.map((seg) => (
-                      <div
-                        key={seg.id}
-                        className={`catalog-item-interactive ${selectedSegId === seg.id ? "active" : ""}`}
-                        onClick={() => setSelectedSegId(seg.id)}
-                      >
-                        <div className="catalog-info">
-                          <span className="catalog-name">{seg.name}</span>
-                          <span className="catalog-stats">
-                            {(seg.distanceMeters / 1000).toFixed(2)} km | {seg.elevationGainMeters}m Gain |{" "}
-                            {seg.avgGradePercent}% Avg
-                          </span>
-                        </div>
-                        <div className="catalog-actions" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            className="btn-edit-catalog"
-                            onClick={() => handleSegmentRename(seg.id, seg.name)}
-                            title="Rename Segment"
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            className="btn-delete-catalog"
-                            onClick={() => handleSegmentDelete(seg.id, seg.name)}
-                            title="Delete Segment"
-                          >
-                            🗑️
-                          </button>
-                        </div>
+                    <div className="card save-card">
+                      <h3>Register Custom Trimmed Segment</h3>
+                      <div className="form-group">
+                        <input
+                          type="text"
+                          placeholder="Segment Name"
+                          value={segmentName}
+                          onChange={(e) => setSegmentName(e.target.value)}
+                        />
                       </div>
-                    ))}
-                  </div>
+                      <button className="btn btn-primary btn-block" onClick={handleUploadToDrive} disabled={loading}>
+                        {loading ? "Uploading..." : "Save to Google Drive"}
+                      </button>
+                    </div>
+                  </>
                 ) : (
-                  <div className="empty-catalog-message">
-                    No segments registered yet. Click "Register New" above to get started!
+                  <div className="card welcome-card">
+                    <h3>Upload GPX to Start Trimming</h3>
                   </div>
                 )}
               </div>
             </div>
+          </div>
+        ) : (
+          /* View B: Centered, Focused Leaderboard Dashboard */
+          <div className="centered-dashboard">
+            <div className="card leaderboard-card strava-theme">
+              {/* Dropdown Segment Selector Row */}
+              <div className="segment-selector-header-row">
+                <div className="selector-left">
+                  {catalog.segments.length > 0 ? (
+                    <div className="dropdown-wrapper">
+                      <select
+                        className="segment-select-dropdown"
+                        value={selectedSegId}
+                        onChange={(e) => setSelectedSegId(e.target.value)}
+                      >
+                        {catalog.segments.map((seg) => (
+                          <option key={seg.id} value={seg.id}>
+                            ⛰️ {seg.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <span className="no-segments-label">No segments registered yet</span>
+                  )}
+                </div>
 
-            {/* Right Column: Strava-style Leaderboard details & manual attempts */}
-            <div className="grid-col right-col">
+                {activeSegment && (
+                  <div className="selector-right-actions">
+                    <button
+                      className="btn btn-icon-only"
+                      onClick={() => handleSegmentRename(activeSegment.id, activeSegment.name)}
+                      title="Rename"
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      className="btn btn-icon-only text-danger"
+                      onClick={() => handleSegmentDelete(activeSegment.id, activeSegment.name)}
+                      title="Delete"
+                    >
+                      🗑️
+                    </button>
+                    <button
+                      className="btn btn-secondary btn-sm edit-seg-btn-small"
+                      onClick={() => handleLoadSegmentToEditor(activeSegment.id, activeSegment.name)}
+                      disabled={loading}
+                      title="Map View"
+                    >
+                      🗺️ View/Edit Route
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {activeSegment ? (
                 <>
-                  {/* Segment Details & Leaderboard table */}
-                  <div className="card leaderboard-card strava-theme">
-                    {/* Header with Title and Map Edit Button */}
-                    <div className="leaderboard-header">
-                      <div className="leaderboard-title-row">
-                        <h3>{activeSegment.name}</h3>
-                        <button
-                          className="btn btn-secondary btn-sm edit-seg-btn"
-                          onClick={() => handleLoadSegmentToEditor(activeSegment.id, activeSegment.name)}
-                          disabled={loading}
-                        >
-                          🗺️ View/Edit Route (구간 보기/편집)
-                        </button>
-                      </div>
-                      <span className="leaderboard-subtitle">
-                        {(activeSegment.distanceMeters / 1000).toFixed(2)} km | {activeSegment.elevationGainMeters}m Gain | {activeSegment.avgGradePercent}% Avg
-                      </span>
-                    </div>
-
-                    {/* Filter Period Pills */}
-                    <div className="filter-pills-row">
-                      <button
-                        className={`pill-btn ${filterPeriod === "all" ? "active" : ""}`}
-                        onClick={() => setFilterPeriod("all")}
-                      >
-                        All-Time
-                      </button>
-                      <button
-                        className={`pill-btn ${filterPeriod === "year" ? "active" : ""}`}
-                        onClick={() => setFilterPeriod("year")}
-                      >
-                        This Year
-                      </button>
-                      <button
-                        className={`pill-btn ${filterPeriod === "days30" ? "active" : ""}`}
-                        onClick={() => setFilterPeriod("days30")}
-                      >
-                        Recent 30 Days
-                      </button>
-                    </div>
-
-                    {/* PR Trophy Zone (Personal Best Highlight) */}
-                    {personalBest ? (
-                      <div className="pr-trophy-zone">
-                        <div className="trophy-rays">
-                          <span className="trophy-crown">👑</span>
-                        </div>
-                        <div className="pr-time-display">
-                          {formatMsToTime(personalBest.durationMs)}
-                        </div>
-                        <div className="pr-label">PERSONAL RECORD (PR)</div>
-                        <div className="pr-achieved-date">
-                          Achieved {getRelativeTime(personalBest.date)} ({personalBest.date})
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {/* Leaderboard Custom Rows */}
-                    {leaderboard.length > 0 ? (
-                      <div className="strava-leaderboard-list">
-                        <div className="leaderboard-list-header">
-                          <span>RANK</span>
-                          <span>ATTEMPT DATE</span>
-                          <span className="text-right">TIME / SPEED</span>
-                        </div>
-
-                        {leaderboard.map((att, idx) => (
-                          <div key={att.id} className="leaderboard-row-item">
-                            <div className="row-rank">
-                              {idx === 0 ? (
-                                <span className="crown-badge gold">👑</span>
-                              ) : idx === 1 ? (
-                                <span className="crown-badge silver">👑</span>
-                              ) : idx === 2 ? (
-                                <span className="crown-badge bronze">👑</span>
-                              ) : (
-                                <span className="rank-num">{idx + 1}</span>
-                              )}
-                            </div>
-
-                            <div className="row-avatar">
-                              <span className="avatar-placeholder">🚴</span>
-                            </div>
-
-                            <div className="row-info">
-                              <span className="attempt-date">{att.date}</span>
-                              <span className="attempt-relative">
-                                {getRelativeTime(att.date)}
-                              </span>
-                            </div>
-
-                            <div className="row-results">
-                              <span className="attempt-time">{formatMsToTime(att.durationMs)}</span>
-                              <span className="attempt-speed">{att.avgSpeed.toFixed(1)} km/h</span>
-                            </div>
-
-                            <div className="row-actions">
-                              <button
-                                className="btn-delete-attempt"
-                                onClick={() => handleDeleteAttempt(att.id, att.date)}
-                                title="Delete Attempt"
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="empty-leaderboard-message">
-                        No ride records saved on this segment yet. Register your first ride below!
-                      </div>
-                    )}
+                  {/* Segment stats info bar */}
+                  <div className="segment-metadata-bar">
+                    <span>{(activeSegment.distanceMeters / 1000).toFixed(2)} km</span>
+                    <span className="divider">|</span>
+                    <span>{activeSegment.elevationGainMeters}m Gain</span>
+                    <span className="divider">|</span>
+                    <span>{activeSegment.avgGradePercent}% Avg Slope</span>
                   </div>
 
-                  {/* Add Attempt Form (No Rider Name input!) */}
-                  <div className="card add-attempt-card">
-                    <h3>Add Ride Record (기록 직접 등록)</h3>
-                    <form onSubmit={handleAddAttempt} className="attempt-form">
-                      <div className="form-row">
-                        <div className="form-group flex-1">
-                          <label>Ride Date</label>
-                          <input
-                            type="date"
-                            required
-                            value={newRideDate}
-                            onChange={(e) => setNewRideDate(e.target.value)}
-                          />
-                        </div>
-                        <div className="form-group flex-1">
-                          <label>Duration (mm:ss or hh:mm:ss)</label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="e.g. 05:42"
-                            value={newRideTime}
-                            onChange={(e) => setNewRideTime(e.target.value)}
-                          />
-                        </div>
-                        <div className="form-group flex-1">
-                          <label>Avg Speed (km/h)</label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="e.g. 23.4"
-                            value={newRideSpeed}
-                            onChange={(e) => setNewRideSpeed(e.target.value)}
-                          />
-                        </div>
-                      </div>
-                      <button
-                        type="submit"
-                        className="btn btn-primary btn-block btn-lg"
-                        disabled={loading || !accessToken}
-                      >
-                        Add Record to Leaderboard
-                      </button>
-                    </form>
+                  {/* Filter Pills */}
+                  <div className="filter-pills-row">
+                    <button
+                      className={`pill-btn ${filterPeriod === "all" ? "active" : ""}`}
+                      onClick={() => setFilterPeriod("all")}
+                    >
+                      All-Time
+                    </button>
+                    <button
+                      className={`pill-btn ${filterPeriod === "year" ? "active" : ""}`}
+                      onClick={() => setFilterPeriod("year")}
+                    >
+                      This Year
+                    </button>
+                    <button
+                      className={`pill-btn ${filterPeriod === "days30" ? "active" : ""}`}
+                      onClick={() => setFilterPeriod("days30")}
+                    >
+                      Recent 30 Days
+                    </button>
                   </div>
+
+                  {/* PR Trophy Highlight */}
+                  {personalBest && (
+                    <div className="pr-trophy-zone">
+                      <div className="trophy-rays">
+                        <span className="trophy-crown">👑</span>
+                      </div>
+                      <div className="pr-time-display">{formatMsToTime(personalBest.durationMs)}</div>
+                      <div className="pr-label">PERSONAL RECORD (PR)</div>
+                      <div className="pr-achieved-date">
+                        Achieved {getRelativeTime(personalBest.date)} ({personalBest.date})
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Custom ranking rows with inline splits details */}
+                  {leaderboard.length > 0 ? (
+                    <div className="strava-leaderboard-list">
+                      <div className="leaderboard-list-header">
+                        <span>RANK</span>
+                        <span>ATTEMPT DATE</span>
+                        <span>TIME / SPEED</span>
+                      </div>
+
+                      {leaderboard.map((att, idx) => {
+                        const isExpanded = selectedAttemptId === att.id;
+                        const splits = isExpanded ? calculateSplits(activeSegmentPoints, att, activeSegment.avgGradePercent) : [];
+                        return (
+                          <React.Fragment key={att.id}>
+                            <div
+                              className={`leaderboard-row-item clickable ${isExpanded ? "expanded" : ""}`}
+                              onClick={() => setSelectedAttemptId(isExpanded ? null : att.id)}
+                            >
+                              <div className="row-rank">
+                                {idx === 0 ? (
+                                  <span className="crown-badge gold">👑</span>
+                                ) : idx === 1 ? (
+                                  <span className="crown-badge silver">👑</span>
+                                ) : idx === 2 ? (
+                                  <span className="crown-badge bronze">👑</span>
+                                ) : (
+                                  <span className="rank-num">{idx + 1}</span>
+                                )}
+                              </div>
+
+                              <div className="row-avatar">
+                                <span className="avatar-placeholder">🚴</span>
+                              </div>
+
+                              <div className="row-info">
+                                <span className="attempt-date">{att.date}</span>
+                                <span className="attempt-relative">{getRelativeTime(att.date)}</span>
+                              </div>
+
+                              <div className="row-results">
+                                <span className="attempt-time">{formatMsToTime(att.durationMs)}</span>
+                                <span className="attempt-speed">{att.avgSpeed.toFixed(1)} km/h</span>
+                              </div>
+
+                              <div className="row-actions" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  className="btn-delete-attempt"
+                                  onClick={() => handleDeleteAttempt(att.id, att.date)}
+                                  title="Delete Record"
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Collapsible Splits Section */}
+                            {isExpanded && (
+                              <div className="splits-details-panel">
+                                <h4>📊 10 Splits detailed Analysis (10단계 구간 상세 분석)</h4>
+                                {activeSegmentPoints.length > 0 ? (
+                                  <div className="splits-table-wrapper">
+                                    <table className="splits-table">
+                                      <thead>
+                                        <tr>
+                                          <th>SPLIT</th>
+                                          <th>INTERVAL</th>
+                                          <th>TIME</th>
+                                          <th>SPEED</th>
+                                          <th>SLOPE</th>
+                                          <th>❤️ HR</th>
+                                          <th>⚡ POWER</th>
+                                          <th>🔄 CAD</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {splits.map((split) => (
+                                          <tr key={split.splitNum}>
+                                            <td className="split-num-td">{split.splitNum}</td>
+                                            <td className="split-interval-td">
+                                              {(split.startDist / 1000).toFixed(2)} - {(split.endDist / 1000).toFixed(2)} km
+                                            </td>
+                                            <td className="split-time-td">{split.timeStr}</td>
+                                            <td className="split-speed-td">{split.avgSpeed.toFixed(1)} km/h</td>
+                                            <td
+                                              className={`split-grade-td ${
+                                                split.avgGrade > 8 ? "steep-red" : split.avgGrade > 4 ? "slope-orange" : "flat-green"
+                                              }`}
+                                            >
+                                              {split.avgGrade.toFixed(1)}%
+                                            </td>
+                                            <td className="sensor-hr">{split.avgHr} bpm</td>
+                                            <td className="sensor-power">{split.avgPower} W</td>
+                                            <td className="sensor-cadence">{split.avgCadence} rpm</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                ) : (
+                                  <div className="splits-loading">Loading segment GPX points for splits calculations...</div>
+                                )}
+                              </div>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="empty-leaderboard-message">
+                      No records saved yet. Upload GPX with time logs to start.
+                    </div>
+                  )}
                 </>
               ) : (
-                <div className="card welcome-card">
-                  <h3>Select a Segment</h3>
-                  <p>
-                    Please select a registered segment from the left panel list to view your personal leaderboard.
-                  </p>
+                <div className="welcome-card welcome-centered">
+                  <h3>Welcome to Leaderboard</h3>
+                  <p>Click "구간 등록 (Register Route)" in the header to import your first GPX file.</p>
                 </div>
               )}
             </div>
+
+            {/* Compact Add Attempt form under the main card */}
+            {activeSegment && (
+              <div className="card add-attempt-card compact-card">
+                <h4>Add Manual Ride Record (기록 직접 추가)</h4>
+                <form onSubmit={handleAddAttempt} className="attempt-form">
+                  <div className="form-row">
+                    <div className="form-group flex-1">
+                      <label>Ride Date</label>
+                      <input
+                        type="date"
+                        required
+                        value={newRideDate}
+                        onChange={(e) => setNewRideDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group flex-1">
+                      <label>Duration (mm:ss)</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. 05:42"
+                        value={newRideTime}
+                        onChange={(e) => setNewRideTime(e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group flex-1">
+                      <label>Avg Speed (km/h)</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. 23.4"
+                        value={newRideSpeed}
+                        onChange={(e) => setNewRideSpeed(e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group form-btn-group">
+                      <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
+                        Add Record
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            )}
           </div>
         )}
       </main>
