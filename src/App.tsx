@@ -1,30 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { parseGPX, generateGPX } from "./utils/gpxParser";
+import { parseGPX, generateGPX, calculateDistance } from "./utils/gpxParser";
 import type { GPXData, GPXPoint } from "./utils/gpxParser";
 import { detectClimbs } from "./utils/hillDetector";
 import type { ClimbCandidate } from "./utils/hillDetector";
 import { useGoogleDrive } from "./hooks/useGoogleDrive";
-import type { CloudAttempt } from "./hooks/useGoogleDrive";
+import type { CatalogSegment, CloudAttempt } from "./hooks/useGoogleDrive";
 import { MapView } from "./components/MapView";
 import { ChartView } from "./components/ChartView";
-
-// Helper: Parse MM:SS or HH:MM:SS duration string to milliseconds
-function parseTimeToMs(timeStr: string): number {
-  const parts = timeStr.trim().split(":").map(Number);
-  if (parts.some(isNaN)) return 0;
-  
-  if (parts.length === 2) {
-    // MM:SS
-    return (parts[0] * 60 + parts[1]) * 1000;
-  } else if (parts.length === 3) {
-    // HH:MM:SS
-    return (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000;
-  }
-  
-  // Fallback: try raw seconds
-  const sec = parseFloat(timeStr);
-  return isNaN(sec) ? 0 : sec * 1000;
-}
 
 // Helper: Format milliseconds to MM:SS or HH:MM:SS
 function formatMsToTime(ms: number): string {
@@ -39,8 +21,8 @@ function formatMsToTime(ms: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-// Helper: Get relative time string (e.g. "3 days ago")
-function getRelativeTime(dateStr: string): string {
+// Helper: Get relative time string in Korean
+function getRelativeTimeKo(dateStr: string): string {
   const now = new Date();
   const past = new Date(dateStr);
   
@@ -50,23 +32,23 @@ function getRelativeTime(dateStr: string): string {
   const diffTime = nowZero.getTime() - pastZero.getTime();
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
   
-  if (diffDays === 0) return "Today (오늘)";
-  if (diffDays === 1) return "Yesterday (어제)";
+  if (diffDays === 0) return "오늘";
+  if (diffDays === 1) return "어제";
   if (diffDays < 0) return dateStr;
   
   if (diffDays < 7) {
-    return `${diffDays} days ago (${diffDays}일 전)`;
+    return `${diffDays}일 전`;
   }
   if (diffDays < 30) {
     const weeks = Math.floor(diffDays / 7);
-    return `${weeks} week${weeks > 1 ? "s" : ""} ago (${weeks}주 전)`;
+    return `${weeks}주 전`;
   }
   const months = Math.floor(diffDays / 30);
   if (months < 12) {
-    return `${months} month${months > 1 ? "s" : ""} ago (${months}달 전)`;
+    return `${months}달 전`;
   }
   const years = Math.floor(months / 12);
-  return `${years} year${years > 1 ? "s" : ""} ago (${years}년 전)`;
+  return `${years}년 전`;
 }
 
 interface SplitDetail {
@@ -186,6 +168,63 @@ function calculateSplits(points: GPXPoint[], attempt: CloudAttempt, avgGradePerc
   return splits;
 }
 
+// GPX matching algorithm to extract segment attempt
+function extractAttemptFromRideGPX(ridePoints: GPXPoint[], segment: CatalogSegment): Omit<CloudAttempt, "id"> | null {
+  if (ridePoints.length < 2) return null;
+  
+  const [startLat, startLon] = segment.startCoords;
+  const [endLat, endLon] = segment.endCoords;
+  
+  let minStartDist = Infinity;
+  let startIndex = -1;
+  
+  let minEndDist = Infinity;
+  let endIndex = -1;
+  
+  // Find closest point to segment start coordinate
+  for (let i = 0; i < ridePoints.length; i++) {
+    const pt = ridePoints[i];
+    const dStart = calculateDistance(pt.lat, pt.lon, startLat, startLon);
+    if (dStart < minStartDist) {
+      minStartDist = dStart;
+      startIndex = i;
+    }
+  }
+  
+  // Search for segment end coordinate after the start index
+  if (startIndex !== -1) {
+    for (let i = startIndex + 1; i < ridePoints.length; i++) {
+      const pt = ridePoints[i];
+      const dEnd = calculateDistance(pt.lat, pt.lon, endLat, endLon);
+      if (dEnd < minEndDist) {
+        minEndDist = dEnd;
+        endIndex = i;
+      }
+    }
+  }
+  
+  // Check if matched locations are within 150m boundary
+  if (startIndex !== -1 && endIndex !== -1 && startIndex < endIndex && minStartDist < 150 && minEndDist < 150) {
+    const startPt = ridePoints[startIndex];
+    const endPt = ridePoints[endIndex];
+    
+    if (startPt.time && endPt.time) {
+      const durationMs = new Date(endPt.time).getTime() - new Date(startPt.time).getTime();
+      if (durationMs > 0) {
+        const avgSpeed = (segment.distanceMeters / 1000) / (durationMs / 3600000);
+        const date = startPt.time.split("T")[0];
+        return {
+          riderName: "Me",
+          date,
+          durationMs,
+          avgSpeed: parseFloat(avgSpeed.toFixed(1))
+        };
+      }
+    }
+  }
+  return null;
+}
+
 export default function App() {
   const {
     accessToken,
@@ -225,11 +264,6 @@ export default function App() {
   const [climbNames, setClimbNames] = useState<{ [key: number]: string }>({});
   const [selectedClimbIdx, setSelectedClimbIdx] = useState<number>(-1);
   const [checkedClimbs, setCheckedClimbs] = useState<{ [key: number]: boolean }>({});
-
-  // Ranking attempt states
-  const [newRideDate, setNewRideDate] = useState<string>(new Date().toISOString().split("T")[0]);
-  const [newRideTime, setNewRideTime] = useState<string>("");
-  const [newRideSpeed, setNewRideSpeed] = useState<string>("");
 
   const [showSettings, setShowSettings] = useState<boolean>(!localStorage.getItem("gdrive_client_id"));
   const [tempClientId, setTempClientId] = useState<string>(clientId);
@@ -279,7 +313,7 @@ export default function App() {
       try {
         const parsed = parseGPX(text);
         if (parsed.points.length < 2) {
-          alert("Invalid GPX: File must contain at least 2 points.");
+          alert("올바르지 않은 GPX 파일입니다. 최소 2개 이상의 포인트가 필요합니다.");
           return;
         }
         setGpxData(parsed);
@@ -294,11 +328,11 @@ export default function App() {
 
         const initialNames: { [key: number]: string } = {};
         climbs.forEach((_, idx) => {
-          initialNames[idx] = `${parsed.name} - Climb ${idx + 1}`;
+          initialNames[idx] = `${parsed.name} - 구간 ${idx + 1}`;
         });
         setClimbNames(initialNames);
       } catch (err) {
-        alert("Failed to parse GPX file. Make sure it's valid XML.");
+        alert("GPX 파일을 읽는 중 오류가 발생했습니다.");
       }
     };
     reader.readAsText(file);
@@ -314,7 +348,7 @@ export default function App() {
     setStartIndex(climb.startIndex);
     setEndIndex(climb.endIndex);
     setSelectedClimbIdx(idx);
-    setSegmentName(climbNames[idx] || `${gpxData?.name || "Climb"} - Climb ${idx + 1}`);
+    setSegmentName(climbNames[idx] || `${gpxData?.name || "Climb"} - 구간 ${idx + 1}`);
   };
 
   const handleClimbNameChange = (idx: number, val: string) => {
@@ -334,7 +368,7 @@ export default function App() {
       .filter((idx) => checkedClimbs[idx]);
 
     if (selectedIndices.length < 2) {
-      alert("Please select at least 2 climbs to merge.");
+      alert("병합할 구간을 최소 2개 이상 선택해 주세요.");
       return;
     }
 
@@ -347,15 +381,15 @@ export default function App() {
     setSelectedClimbIdx(-1);
 
     const mergedNames = selectedIndices.map((idx) => `Hill ${idx + 1}`).join(" + ");
-    setSegmentName(`${gpxData?.name || "Merged Route"} - ${mergedNames} Merged`);
+    setSegmentName(`${gpxData?.name || "Merged Route"} - ${mergedNames} 병합`);
     setCheckedClimbs({});
-    alert(`Merged ${selectedIndices.length} sections!`);
+    alert(`선택하신 ${selectedIndices.length}개 구간이 중간 내리막을 포함하여 병합되었습니다!`);
   };
 
   const handleSaveSettings = () => {
     setClientId(tempClientId);
     setShowSettings(false);
-    alert("Client ID saved.");
+    alert("설정이 저장되었습니다.");
     logout();
   };
 
@@ -371,6 +405,7 @@ export default function App() {
 
   const { dist: distance, gain, grade } = calculateStatsForRange(startIndex, endIndex);
 
+  // Upload inline climb segment from row (UX FIX: Do NOT auto-redirect to leaderboard!)
   const handleSaveClimbRow = async (climb: ClimbCandidate, idx: number) => {
     if (!gpxData) return;
     const name = climbNames[idx]?.trim() || `Climb ${idx + 1}`;
@@ -394,17 +429,17 @@ export default function App() {
     });
 
     if (success) {
-      alert(`🎉 Segment "${name}" successfully saved!`);
+      alert(`🎉 구간 "${name}" 등록을 완료했습니다! 지도를 확인하거나 다른 구간도 계속 등록할 수 있습니다.`);
       const newFileName = `${name.replace(/[^a-zA-Z0-9가-힣_]/g, "_")}.gpx`;
       setSelectedSegId(newFileName);
-      setIsRegistering(false);
     }
   };
 
+  // Upload custom segment (UX FIX: Do NOT auto-redirect to leaderboard!)
   const handleUploadToDrive = async () => {
     if (!gpxData) return;
     if (!segmentName.trim()) {
-      alert("Please enter a segment name.");
+      alert("구간 이름을 입력해 주세요.");
       return;
     }
 
@@ -422,61 +457,53 @@ export default function App() {
     });
 
     if (success) {
-      alert("🎉 Segment successfully saved!");
+      alert(`🎉 구간 "${segmentName}" 등록을 완료했습니다!`);
       const newFileName = `${segmentName.replace(/[^a-zA-Z0-9가-힣_]/g, "_")}.gpx`;
       setSelectedSegId(newFileName);
-      setIsRegistering(false);
     }
   };
 
-  const handleAddAttempt = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedSegId) return;
-    if (!newRideTime.trim() || !newRideSpeed.trim()) {
-      alert("Please fill in time and speed.");
-      return;
-    }
+  // Extract attempt record from uploaded ride GPX file
+  const handleRideGpxUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !activeSegment) return;
 
-    const durationMs = parseTimeToMs(newRideTime);
-    if (durationMs <= 0) {
-      alert("Invalid Time. Format must be mm:ss or hh:mm:ss");
-      return;
-    }
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target?.result as string;
+      try {
+        const parsed = parseGPX(text);
+        const attemptData = extractAttemptFromRideGPX(parsed.points, activeSegment);
+        if (!attemptData) {
+          alert("업로드한 GPX 파일에서 해당 구간 주행 기록을 추출할 수 없습니다. 구간의 시작/종료 좌표를 실제로 지나갔는지 확인해 주세요 (오차범위 150m).");
+          return;
+        }
 
-    const speed = parseFloat(newRideSpeed);
-    if (isNaN(speed) || speed <= 0) {
-      alert("Invalid speed.");
-      return;
-    }
-
-    const success = await addAttemptToCloud(selectedSegId, {
-      riderName: "Me",
-      date: newRideDate,
-      durationMs,
-      avgSpeed: speed,
-    });
-
-    if (success) {
-      alert("🎉 Record successfully added!");
-      setNewRideTime("");
-      setNewRideSpeed("");
-    }
+        const success = await addAttemptToCloud(selectedSegId, attemptData);
+        if (success) {
+          alert(`🎉 주행 기록이 성공적으로 매칭되어 리더보드에 추가되었습니다!\n기록: ${formatMsToTime(attemptData.durationMs)} | 평균 시속: ${attemptData.avgSpeed} km/h`);
+        }
+      } catch (err) {
+        alert("GPX 파일 파싱에 실패했습니다. 올바른 GPX 형식인지 확인해 주세요.");
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleDeleteAttempt = async (attemptId: string, date: string) => {
-    if (window.confirm(`Delete attempt from ${date}?`)) {
+    if (window.confirm(`${date} 기록을 리더보드에서 삭제하시겠습니까?`)) {
       const success = await deleteAttemptFromCloud(selectedSegId, attemptId);
       if (success) {
-        alert("🎉 Attempt successfully deleted!");
+        alert("🎉 주행 기록이 삭제되었습니다.");
       }
     }
   };
 
   const handleSegmentDelete = async (id: string, name: string) => {
-    if (window.confirm(`Are you sure you want to delete segment "${name}" from Drive?`)) {
+    if (window.confirm(`구간 "${name}"을 삭제하시겠습니까? 관련 주행 기록도 함께 삭제됩니다.`)) {
       const success = await deleteSegment(id);
       if (success) {
-        alert("🎉 Segment successfully deleted!");
+        alert("🎉 구간이 정상적으로 삭제되었습니다.");
         if (selectedSegId === id) {
           setSelectedSegId(catalog.segments[0]?.id || "");
         }
@@ -485,11 +512,11 @@ export default function App() {
   };
 
   const handleSegmentRename = async (id: string, currentName: string) => {
-    const newName = window.prompt("Enter new segment name:", currentName);
+    const newName = window.prompt("새로운 구간 이름을 입력하세요:", currentName);
     if (newName && newName.trim() && newName.trim() !== currentName) {
       const success = await renameSegment(id, newName.trim());
       if (success) {
-        alert("🎉 Segment successfully renamed!");
+        alert("🎉 구간 이름이 변경되었습니다.");
         const newFileName = `${newName.trim().replace(/[^a-zA-Z0-9가-힣_]/g, "_")}.gpx`;
         if (selectedSegId === id) {
           setSelectedSegId(newFileName);
@@ -501,13 +528,13 @@ export default function App() {
   const handleLoadSegmentToEditor = async (id: string, name: string) => {
     const gpxXml = await downloadGPXFile(id);
     if (!gpxXml) {
-      alert("Failed to download segment GPX file.");
+      alert("구간 GPX 파일을 다운로드하는 데 실패했습니다.");
       return;
     }
     try {
       const parsed = parseGPX(gpxXml);
       if (parsed.points.length < 2) {
-        alert("Downloaded GPX is invalid.");
+        alert("다운로드된 GPX가 손상되었습니다.");
         return;
       }
       setGpxData(parsed);
@@ -519,7 +546,7 @@ export default function App() {
       setCheckedClimbs({});
       setIsRegistering(true);
     } catch (err) {
-      alert("Failed to parse GPX.");
+      alert("GPX 파싱 오류가 발생했습니다.");
     }
   };
 
@@ -535,17 +562,41 @@ export default function App() {
     return [...list].sort((a, b) => a.durationMs - b.durationMs);
   };
 
+  // Get the most recently challenged segment based on attempts date
+  const getMostRecentSegment = (): CatalogSegment | null => {
+    let mostRecentSeg: CatalogSegment | null = null;
+    let mostRecentDate = "";
+    
+    catalog.segments.forEach(seg => {
+      const attempts = rankings[seg.id] || [];
+      attempts.forEach(att => {
+        if (att.date > mostRecentDate) {
+          mostRecentDate = att.date;
+          mostRecentSeg = seg;
+        }
+      });
+    });
+    
+    return mostRecentSeg || catalog.segments[0] || null;
+  };
+
   const activeSegment = catalog.segments.find((s) => s.id === selectedSegId);
   const leaderboard = getSelectedLeaderboard();
   const personalBest = leaderboard.length > 0 ? leaderboard[0] : null;
 
+  const mostRecentSeg = getMostRecentSegment();
+  const mostRecentAttempts = mostRecentSeg ? (rankings[mostRecentSeg.id] || []) : [];
+  const mostRecentDate = mostRecentAttempts.length > 0 
+    ? [...mostRecentAttempts].sort((a, b) => b.date.localeCompare(a.date))[0].date 
+    : "";
+
   return (
     <div className="app-container">
-      {/* 1. Subtle, Clean Header */}
+      {/* 1. Subtle, Clean Header (KO) */}
       <header className="app-header">
         <div className="header-logo">
           <span className="logo-icon">🏆</span>
-          <h1>Leaderboard</h1>
+          <h1>개인 리더보드</h1>
         </div>
 
         <div className="header-actions">
@@ -559,22 +610,22 @@ export default function App() {
                 setIsRegistering(true);
               }}
             >
-              ➕ 구간 등록 (Register Route)
+              ➕ 구간 등록 (Register)
             </button>
           )}
           {accessToken ? (
             <div className="user-profile">
-              <span className="user-email">{userEmail || "Connected"}</span>
+              <span className="user-email">{userEmail || "연결됨"}</span>
               <button className="btn btn-secondary btn-sm" onClick={logout}>
-                Logout
+                로그아웃
               </button>
             </div>
           ) : (
             <button className="btn btn-primary btn-sm" onClick={login}>
-              Sign In
+              로그인
             </button>
           )}
-          <button className="btn-icon" onClick={() => setShowSettings(!showSettings)} title="Settings">
+          <button className="btn-icon" onClick={() => setShowSettings(!showSettings)} title="설정">
             ⚙️
           </button>
         </div>
@@ -585,22 +636,22 @@ export default function App() {
         {showSettings && (
           <div className="settings-modal">
             <div className="settings-card">
-              <h3>Google API Configuration</h3>
+              <h3>구글 API 설정</h3>
               <div className="form-group">
                 <label>OAuth Client ID</label>
                 <input
                   type="text"
-                  placeholder="Client ID"
+                  placeholder="Client ID를 입력하세요"
                   value={tempClientId}
                   onChange={(e) => setTempClientId(e.target.value)}
                 />
               </div>
               <div className="settings-buttons">
                 <button className="btn btn-primary" onClick={handleSaveSettings}>
-                  Save Settings
+                  설정 저장
                 </button>
                 <button className="btn btn-secondary" onClick={() => setShowSettings(false)}>
-                  Close
+                  닫기
                 </button>
               </div>
             </div>
@@ -608,31 +659,31 @@ export default function App() {
         )}
 
         {isRegistering ? (
-          /* View A: Full-width GPX Editor Mode */
+          /* View A: Full-width GPX Editor Mode (KO) */
           <div className="editor-container">
             <div className="editor-header-nav">
               <button className="btn btn-secondary btn-sm" onClick={() => setIsRegistering(false)}>
-                ← Back to Leaderboard (랭킹으로 돌아가기)
+                ← 랭킹 보드로 돌아가기
               </button>
-              <h2>Register New Segment</h2>
+              <h2>새로운 구간 생성 및 편집</h2>
             </div>
             
             <div className="main-grid">
               <div className="grid-col left-col">
                 <div className="card upload-card">
-                  <h3>Upload GPX Route File</h3>
+                  <h3>GPX 파일 업로드</h3>
                   <div className="file-drop-zone">
                     <input type="file" accept=".gpx" onChange={handleFileUpload} id="gpx-file-input" />
                     <label htmlFor="gpx-file-input">
                       <span className="upload-icon">📂</span>
-                      <strong>Choose a GPX file</strong>
+                      <strong>GPX 주행 경로 파일 선택</strong>
                     </label>
                   </div>
                 </div>
 
                 {gpxData && (
                   <div className="card map-card">
-                    <h3>Route Map</h3>
+                    <h3>구간 지도 확인</h3>
                     <div className="map-view-wrapper">
                       <MapView points={gpxData.points} startIndex={startIndex} endIndex={endIndex} />
                     </div>
@@ -644,7 +695,7 @@ export default function App() {
                 {gpxData ? (
                   <>
                     <div className="card chart-card">
-                      <h3>Elevation Profile (Trim Segment)</h3>
+                      <h3>고도 프로필 및 범위 편집</h3>
                       <ChartView
                         points={gpxData.points}
                         startIndex={startIndex}
@@ -654,25 +705,25 @@ export default function App() {
                       <div className="segment-metrics">
                         <div className="metric-box">
                           <span className="metric-val">{(distance / 1000).toFixed(2)} km</span>
-                          <span className="metric-lbl">Distance</span>
+                          <span className="metric-lbl">구간 거리</span>
                         </div>
                         <div className="metric-box">
                           <span className="metric-val">{gain.toFixed(0)} m</span>
-                          <span className="metric-lbl">Gain</span>
+                          <span className="metric-lbl">획득 고도</span>
                         </div>
                         <div className="metric-box">
                           <span className="metric-val">{grade.toFixed(1)}%</span>
-                          <span className="metric-lbl">Avg Slope</span>
+                          <span className="metric-lbl">평균 경사도</span>
                         </div>
                       </div>
                     </div>
 
                     <div className="card climbs-card">
                       <div className="climbs-header">
-                        <h3>Auto-Detected Hills</h3>
+                        <h3>자동 감지된 오르막 구간 목록</h3>
                         {Object.values(checkedClimbs).some(Boolean) && (
                           <button className="btn btn-secondary btn-sm merge-btn" onClick={handleMergeSelectedClimbs}>
-                            🔗 Merge Selected
+                            🔗 선택 구간 병합 (내리막 포함)
                           </button>
                         )}
                       </div>
@@ -694,14 +745,14 @@ export default function App() {
                               <div className="climb-info">
                                 <span className="climb-name">⛰️ Hill {idx + 1}</span>
                                 <span className="climb-stats">
-                                  {(climb.distance / 1000).toFixed(2)} km | {climb.elevationGain.toFixed(0)}m Gain
+                                  {(climb.distance / 1000).toFixed(2)} km | {climb.elevationGain.toFixed(0)}m 획득고도
                                 </span>
                               </div>
                               <div className="climb-item-actions">
                                 <input
                                   type="text"
                                   className="climb-name-input"
-                                  placeholder="Name"
+                                  placeholder="이름 입력"
                                   value={climbNames[idx] || ""}
                                   onChange={(e) => handleClimbNameChange(idx, e.target.value)}
                                   onClick={(e) => e.stopPropagation()}
@@ -714,43 +765,68 @@ export default function App() {
                                     handleSaveClimbRow(climb, idx);
                                   }}
                                 >
-                                  Save
+                                  등록
                                 </button>
                               </div>
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <div className="no-climbs-message">No climbs detected. Trim manually.</div>
+                        <div className="no-climbs-message">감지된 오르막이 없습니다. 수동으로 트랙을 편집해 주세요.</div>
                       )}
                     </div>
 
                     <div className="card save-card">
-                      <h3>Register Custom Trimmed Segment</h3>
+                      <h3>수동 조절 구간 등록</h3>
                       <div className="form-group">
                         <input
                           type="text"
-                          placeholder="Segment Name"
+                          placeholder="구간 이름을 입력하세요"
                           value={segmentName}
                           onChange={(e) => setSegmentName(e.target.value)}
                         />
                       </div>
                       <button className="btn btn-primary btn-block" onClick={handleUploadToDrive} disabled={loading}>
-                        {loading ? "Uploading..." : "Save to Google Drive"}
+                        {loading ? "등록 중..." : "구글 드라이브에 저장"}
                       </button>
                     </div>
                   </>
                 ) : (
                   <div className="card welcome-card">
-                    <h3>Upload GPX to Start Trimming</h3>
+                    <h3>GPX 파일을 선택하여 업로드하면 편집 고도표가 표시됩니다.</h3>
                   </div>
                 )}
               </div>
             </div>
           </div>
         ) : (
-          /* View B: Centered, Focused Leaderboard Dashboard */
+          /* View B: Centered, Focused Leaderboard Dashboard (KO) */
           <div className="centered-dashboard">
+            {/* Top Shortcut: Recent Challenged Segment Banner */}
+            {mostRecentSeg && (
+              <div 
+                className="recent-segment-banner" 
+                onClick={() => setSelectedSegId(mostRecentSeg.id)}
+                title="이 구간 리더보드로 바로가기"
+              >
+                <div className="banner-left">
+                  <span className="banner-badge">🔥 최근 도전 구간</span>
+                  <span className="banner-title">{mostRecentSeg.name}</span>
+                  <span className="banner-stats">
+                    {(mostRecentSeg.distanceMeters / 1000).toFixed(2)} km | {mostRecentSeg.elevationGainMeters}m 획득 | {mostRecentSeg.avgGradePercent}% 경사
+                  </span>
+                </div>
+                <div className="banner-right">
+                  <span className="banner-action-text">리더보드 이동 ➔</span>
+                  {mostRecentDate && (
+                    <span className="banner-last-date">
+                      마지막 주행: {getRelativeTimeKo(mostRecentDate)} ({mostRecentDate})
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="card leaderboard-card strava-theme">
               {/* Dropdown Segment Selector Row */}
               <div className="segment-selector-header-row">
@@ -770,7 +846,7 @@ export default function App() {
                       </select>
                     </div>
                   ) : (
-                    <span className="no-segments-label">No segments registered yet</span>
+                    <span className="no-segments-label">등록된 구간이 없습니다</span>
                   )}
                 </div>
 
@@ -779,14 +855,14 @@ export default function App() {
                     <button
                       className="btn btn-icon-only"
                       onClick={() => handleSegmentRename(activeSegment.id, activeSegment.name)}
-                      title="Rename"
+                      title="구간 이름 수정"
                     >
                       ✏️
                     </button>
                     <button
                       className="btn btn-icon-only text-danger"
                       onClick={() => handleSegmentDelete(activeSegment.id, activeSegment.name)}
-                      title="Delete"
+                      title="구간 삭제"
                     >
                       🗑️
                     </button>
@@ -794,9 +870,9 @@ export default function App() {
                       className="btn btn-secondary btn-sm edit-seg-btn-small"
                       onClick={() => handleLoadSegmentToEditor(activeSegment.id, activeSegment.name)}
                       disabled={loading}
-                      title="Map View"
+                      title="지도 범위 확인 및 편집"
                     >
-                      🗺️ View/Edit Route
+                      🗺️ 구간 확인/편집
                     </button>
                   </div>
                 )}
@@ -808,9 +884,9 @@ export default function App() {
                   <div className="segment-metadata-bar">
                     <span>{(activeSegment.distanceMeters / 1000).toFixed(2)} km</span>
                     <span className="divider">|</span>
-                    <span>{activeSegment.elevationGainMeters}m Gain</span>
+                    <span>{activeSegment.elevationGainMeters}m 획득고도</span>
                     <span className="divider">|</span>
-                    <span>{activeSegment.avgGradePercent}% Avg Slope</span>
+                    <span>평균 경사도 {activeSegment.avgGradePercent}%</span>
                   </div>
 
                   {/* Filter Pills */}
@@ -819,19 +895,19 @@ export default function App() {
                       className={`pill-btn ${filterPeriod === "all" ? "active" : ""}`}
                       onClick={() => setFilterPeriod("all")}
                     >
-                      All-Time
+                      전체 기록
                     </button>
                     <button
                       className={`pill-btn ${filterPeriod === "year" ? "active" : ""}`}
                       onClick={() => setFilterPeriod("year")}
                     >
-                      This Year
+                      올해 기록
                     </button>
                     <button
                       className={`pill-btn ${filterPeriod === "days30" ? "active" : ""}`}
                       onClick={() => setFilterPeriod("days30")}
                     >
-                      Recent 30 Days
+                      최근 30일
                     </button>
                   </div>
 
@@ -842,9 +918,9 @@ export default function App() {
                         <span className="trophy-crown">👑</span>
                       </div>
                       <div className="pr-time-display">{formatMsToTime(personalBest.durationMs)}</div>
-                      <div className="pr-label">PERSONAL RECORD (PR)</div>
+                      <div className="pr-label">개인 최고 기록 (PR)</div>
                       <div className="pr-achieved-date">
-                        Achieved {getRelativeTime(personalBest.date)} ({personalBest.date})
+                        달성일: {getRelativeTimeKo(personalBest.date)} ({personalBest.date})
                       </div>
                     </div>
                   )}
@@ -853,9 +929,9 @@ export default function App() {
                   {leaderboard.length > 0 ? (
                     <div className="strava-leaderboard-list">
                       <div className="leaderboard-list-header">
-                        <span>RANK</span>
-                        <span>ATTEMPT DATE</span>
-                        <span>TIME / SPEED</span>
+                        <span>순위</span>
+                        <span>주행 일자</span>
+                        <span>기록 / 평균 시속</span>
                       </div>
 
                       {leaderboard.map((att, idx) => {
@@ -885,7 +961,7 @@ export default function App() {
 
                               <div className="row-info">
                                 <span className="attempt-date">{att.date}</span>
-                                <span className="attempt-relative">{getRelativeTime(att.date)}</span>
+                                <span className="attempt-relative">{getRelativeTimeKo(att.date)}</span>
                               </div>
 
                               <div className="row-results">
@@ -897,7 +973,7 @@ export default function App() {
                                 <button
                                   className="btn-delete-attempt"
                                   onClick={() => handleDeleteAttempt(att.id, att.date)}
-                                  title="Delete Record"
+                                  title="완주 기록 삭제"
                                 >
                                   🗑️
                                 </button>
@@ -907,20 +983,20 @@ export default function App() {
                             {/* Collapsible Splits Section */}
                             {isExpanded && (
                               <div className="splits-details-panel">
-                                <h4>📊 10 Splits detailed Analysis (10단계 구간 상세 분석)</h4>
+                                <h4>📊 10단계 구간 상세 분석 (10 Splits Analysis)</h4>
                                 {activeSegmentPoints.length > 0 ? (
                                   <div className="splits-table-wrapper">
                                     <table className="splits-table">
                                       <thead>
                                         <tr>
-                                          <th>SPLIT</th>
-                                          <th>INTERVAL</th>
-                                          <th>TIME</th>
-                                          <th>SPEED</th>
-                                          <th>SLOPE</th>
-                                          <th>❤️ HR</th>
-                                          <th>⚡ POWER</th>
-                                          <th>🔄 CAD</th>
+                                          <th>구간</th>
+                                          <th>거리 범위</th>
+                                          <th>시간</th>
+                                          <th>평균 시속</th>
+                                          <th>경사도</th>
+                                          <th>❤️ 심박</th>
+                                          <th>⚡ 파워</th>
+                                          <th>🔄 케이던스</th>
                                         </tr>
                                       </thead>
                                       <tbody>
@@ -948,7 +1024,7 @@ export default function App() {
                                     </table>
                                   </div>
                                 ) : (
-                                  <div className="splits-loading">Loading segment GPX points for splits calculations...</div>
+                                  <div className="splits-loading">구간 데이터를 불러와 10단계 세부 스플릿을 계산하는 중...</div>
                                 )}
                               </div>
                             )}
@@ -958,60 +1034,35 @@ export default function App() {
                     </div>
                   ) : (
                     <div className="empty-leaderboard-message">
-                      No records saved yet. Upload GPX with time logs to start.
+                      등록된 주행 기록이 없습니다. 아래 업로드 칸에 주행 GPX를 올려 기록을 등록해 보세요!
                     </div>
                   )}
                 </>
               ) : (
                 <div className="welcome-card welcome-centered">
-                  <h3>Welcome to Leaderboard</h3>
-                  <p>Click "구간 등록 (Register Route)" in the header to import your first GPX file.</p>
+                  <h3>개인 리더보드에 오신 것을 환영합니다!</h3>
+                  <p>우측 상단의 "➕ 구간 등록"을 눌러 최초 경로 GPX 파일을 등록해 보세요.</p>
                 </div>
               )}
             </div>
 
-            {/* Compact Add Attempt form under the main card */}
+            {/* Compact GPX Upload for Attempt additions (REPLACED MANUAL FORM!) */}
             {activeSegment && (
               <div className="card add-attempt-card compact-card">
-                <h4>Add Manual Ride Record (기록 직접 추가)</h4>
-                <form onSubmit={handleAddAttempt} className="attempt-form">
-                  <div className="form-row">
-                    <div className="form-group flex-1">
-                      <label>Ride Date</label>
-                      <input
-                        type="date"
-                        required
-                        value={newRideDate}
-                        onChange={(e) => setNewRideDate(e.target.value)}
-                      />
-                    </div>
-                    <div className="form-group flex-1">
-                      <label>Duration (mm:ss)</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g. 05:42"
-                        value={newRideTime}
-                        onChange={(e) => setNewRideTime(e.target.value)}
-                      />
-                    </div>
-                    <div className="form-group flex-1">
-                      <label>Avg Speed (km/h)</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="e.g. 23.4"
-                        value={newRideSpeed}
-                        onChange={(e) => setNewRideSpeed(e.target.value)}
-                      />
-                    </div>
-                    <div className="form-group form-btn-group">
-                      <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
-                        Add Record
-                      </button>
-                    </div>
-                  </div>
-                </form>
+                <h4>🚴 새 주행 기록 GPX 업로드 (기록 추가)</h4>
+                <div className="ride-upload-zone">
+                  <input
+                    type="file"
+                    accept=".gpx"
+                    id="ride-gpx-upload"
+                    onChange={handleRideGpxUpload}
+                    disabled={loading}
+                  />
+                  <label htmlFor="ride-gpx-upload">
+                    <span className="upload-icon">📂</span>
+                    <strong>새 주행 GPX 파일 선택</strong> 또는 드래그하여 자동으로 완주 기록 추출 및 랭킹 추가
+                  </label>
+                </div>
               </div>
             )}
           </div>
