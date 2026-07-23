@@ -191,12 +191,12 @@ body {
 }
 
 .btn-primary {
-  background-color: #1A73E8;
+  background-color: #FC6100;
   color: #FFF;
 }
 
 .btn-primary:hover {
-  background-color: #1557B0;
+  background-color: #E05300;
 }
 
 .btn-secondary {
@@ -934,4 +934,227 @@ body {
 .flex-1 {
   flex: 1;
 }
+
+/* Strava Theme specific styles for Leaderboard */
+.strava-theme {
+  background-color: #000000 !important;
+  border-color: #1e1e20 !important;
+  color: #E2E8F0;
+}
+
+.strava-theme h3 {
+  color: #FFF !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.5px;
+}
+
+/* Filter Period Pills */
+.filter-pills-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid #1e1e20;
+  padding-bottom: 12px;
+}
+
+.pill-btn {
+  background-color: #1e1e20;
+  color: #bbb;
+  border: none;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+  outline: none;
+}
+
+.pill-btn:hover {
+  background-color: #2a2a2d;
+  color: #fff;
+}
+
+.pill-btn.active {
+  background-color: #FC6100;
+  color: #fff;
+}
+
+/* PR Trophy Zone (Personal Best Highlight) */
+.pr-trophy-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, rgba(252, 97, 0, 0.12) 0%, rgba(252, 97, 0, 0.01) 100%);
+  border: 1px solid rgba(252, 97, 0, 0.25);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 28px;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(252, 97, 0, 0.05);
+}
+
+.trophy-rays {
+  font-size: 32px;
+  line-height: 1;
+  margin-bottom: 4px;
+  position: relative;
+}
+
+.trophy-crown {
+  display: inline-block;
+  animation: pr-crown-bounce 2s infinite ease-in-out;
+}
+
+@keyframes pr-crown-bounce {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-4px) scale(1.05); }
+}
+
+.pr-time-display {
+  font-size: 38px;
+  font-weight: 850;
+  color: #FFFFFF;
+  letter-spacing: -1px;
+  font-family: monospace, sans-serif;
+  line-height: 1.1;
+}
+
+.pr-label {
+  font-size: 11px;
+  font-weight: 800;
+  color: #FC6100;
+  letter-spacing: 1.5px;
+  margin-top: 6px;
+}
+
+.pr-achieved-date {
+  font-size: 11px;
+  color: #88888b;
+  margin-top: 4px;
+}
+
+/* Strava Leaderboard list rows styling */
+.strava-leaderboard-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.leaderboard-list-header {
+  display: flex;
+  font-size: 10px;
+  font-weight: 800;
+  color: #666669;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #1e1e20;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.leaderboard-list-header span:nth-child(1) { width: 48px; }
+.leaderboard-list-header span:nth-child(2) { flex: 1; }
+.leaderboard-list-header span:nth-child(3) { width: 120px; text-align: right; }
+
+.leaderboard-row-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 6px;
+  border-bottom: 1px solid #141416;
+  transition: background-color 0.15s;
+}
+
+.leaderboard-row-item:hover {
+  background-color: #0a0a0b;
+}
+
+.row-rank {
+  width: 48px;
+  display: flex;
+  align-items: center;
+}
+
+.crown-badge {
+  font-size: 20px;
+}
+
+.crown-badge.gold {
+  filter: drop-shadow(0 0 4px rgba(255, 215, 0, 0.4));
+}
+
+.crown-badge.silver {
+  filter: drop-shadow(0 0 4px rgba(192, 192, 192, 0.4));
+}
+
+.crown-badge.bronze {
+  filter: drop-shadow(0 0 4px rgba(205, 127, 50, 0.4));
+}
+
+.rank-num {
+  font-size: 13px;
+  font-weight: 700;
+  color: #727276;
+  padding-left: 4px;
+}
+
+.row-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background-color: #1e1e20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 14px;
+  font-size: 16px;
+  border: 1px solid #2a2a2d;
+}
+
+.row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.attempt-date {
+  font-size: 13px;
+  font-weight: 700;
+  color: #FFFFFF;
+}
+
+.attempt-relative {
+  font-size: 11px;
+  color: #88888b;
+}
+
+.row-results {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  width: 120px;
+  margin-right: 16px;
+}
+
+.attempt-time {
+  font-size: 14px;
+  font-weight: 750;
+  color: #FFFFFF;
+  font-family: monospace;
+}
+
+.attempt-speed {
+  font-size: 11px;
+  color: #4CAF50;
+  font-weight: 500;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 

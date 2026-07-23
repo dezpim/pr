@@ -39,6 +39,36 @@ function formatMsToTime(ms: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+// Helper: Get relative time string (e.g. "3 days ago")
+function getRelativeTime(dateStr: string): string {
+  const now = new Date();
+  const past = new Date(dateStr);
+  
+  const nowZero = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const pastZero = new Date(past.getFullYear(), past.getMonth(), past.getDate());
+  
+  const diffTime = nowZero.getTime() - pastZero.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 0) return "Today (오늘)";
+  if (diffDays === 1) return "Yesterday (어제)";
+  if (diffDays < 0) return dateStr; // Future date fallback
+  
+  if (diffDays < 7) {
+    return `${diffDays} days ago (${diffDays}일 전)`;
+  }
+  if (diffDays < 30) {
+    const weeks = Math.floor(diffDays / 7);
+    return `${weeks} week${weeks > 1 ? "s" : ""} ago (${weeks}주 전)`;
+  }
+  const months = Math.floor(diffDays / 30);
+  if (months < 12) {
+    return `${months} month${months > 1 ? "s" : ""} ago (${months}달 전)`;
+  }
+  const years = Math.floor(months / 12);
+  return `${years} year${years > 1 ? "s" : ""} ago (${years}년 전)`;
+}
+
 export default function App() {
   const {
     accessToken,
@@ -61,6 +91,9 @@ export default function App() {
   // Navigation: false = Leaderboard (default), true = Register/Edit GPX Editor
   const [isRegistering, setIsRegistering] = useState<boolean>(false);
 
+  // Filter Period: 'all' | 'year' | 'days30'
+  const [filterPeriod, setFilterPeriod] = useState<"all" | "year" | "days30">("all");
+
   // Registration states
   const [gpxData, setGpxData] = useState<GPXData | null>(null);
   const [startIndex, setStartIndex] = useState<number>(0);
@@ -73,7 +106,6 @@ export default function App() {
 
   // Ranking states
   const [selectedSegId, setSelectedSegId] = useState<string>("");
-  const [newRiderName, setNewRiderName] = useState<string>("");
   const [newRideDate, setNewRideDate] = useState<string>(new Date().toISOString().split("T")[0]);
   const [newRideTime, setNewRideTime] = useState<string>("");
   const [newRideSpeed, setNewRideSpeed] = useState<string>("");
@@ -265,12 +297,12 @@ export default function App() {
     }
   };
 
-  // Add ranking attempt handler
+  // Add ranking attempt handler (Manual input - personal self only)
   const handleAddAttempt = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSegId) return;
-    if (!newRiderName.trim() || !newRideTime.trim() || !newRideSpeed.trim()) {
-      alert("Please fill in all ranking fields.");
+    if (!newRideTime.trim() || !newRideSpeed.trim()) {
+      alert("Please fill in both time and speed.");
       return;
     }
 
@@ -287,26 +319,25 @@ export default function App() {
     }
 
     const success = await addAttemptToCloud(selectedSegId, {
-      riderName: newRiderName,
+      riderName: "Me", // default rider name as Me (since it's a personal app)
       date: newRideDate,
       durationMs,
       avgSpeed: speed,
     });
 
     if (success) {
-      alert("🎉 Ride record successfully added to cloud leaderboard!");
-      setNewRiderName("");
+      alert("🎉 Ride record successfully added!");
       setNewRideTime("");
       setNewRideSpeed("");
     }
   };
 
   // Delete attempt handler
-  const handleDeleteAttempt = async (attemptId: string, riderName: string) => {
-    if (window.confirm(`Are you sure you want to delete ${riderName}'s attempt?`)) {
+  const handleDeleteAttempt = async (attemptId: string, date: string) => {
+    if (window.confirm(`Are you sure you want to delete your attempt from ${date}?`)) {
       const success = await deleteAttemptFromCloud(selectedSegId, attemptId);
       if (success) {
-        alert("🎉 Ride record successfully deleted!");
+        alert("🎉 Attempt successfully deleted!");
       }
     }
   };
@@ -367,11 +398,24 @@ export default function App() {
 
   // Sort selected segment leaderboard attempts (fastest time first)
   const getSelectedLeaderboard = (): CloudAttempt[] => {
-    const list = rankings[selectedSegId] || [];
+    let list = rankings[selectedSegId] || [];
+
+    // Filter by period
+    const now = new Date();
+    if (filterPeriod === "year") {
+      const currentYear = now.getFullYear();
+      list = list.filter((att) => new Date(att.date).getFullYear() === currentYear);
+    } else if (filterPeriod === "days30") {
+      const thirtyDaysAgo = now.getTime() - 30 * 24 * 3600 * 1000;
+      list = list.filter((att) => new Date(att.date).getTime() >= thirtyDaysAgo);
+    }
+
     return [...list].sort((a, b) => a.durationMs - b.durationMs);
   };
 
   const activeSegment = catalog.segments.find((s) => s.id === selectedSegId);
+  const leaderboard = getSelectedLeaderboard();
+  const personalBest = leaderboard.length > 0 ? leaderboard[0] : null;
 
   return (
     <div className="app-container">
@@ -460,7 +504,7 @@ export default function App() {
           </div>
         )}
 
-        {/* View A: GPX Segment Parser & Register (Hidden by default) */}
+        {/* View A: GPX Segment Parser & Register */}
         {isRegistering ? (
           <div className="main-grid">
             {/* Left Column: GPX Upload & Map */}
@@ -608,7 +652,7 @@ export default function App() {
                 </>
               ) : (
                 <div className="card welcome-card">
-                  <h3>UploadGPX to Start Trimming</h3>
+                  <h3>Upload GPX to Start Trimming</h3>
                   <p>
                     Drag & drop or select a GPX ride file in the left panel to open it in the editor.
                   </p>
@@ -672,21 +716,22 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="empty-catalog-message">
-                    No segments registered in Google Drive yet. Click "Register New" above to create segments!
+                    No segments registered yet. Click "Register New" above to get started!
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Right Column: Leaderboard details & manual attempt logs */}
+            {/* Right Column: Strava-style Leaderboard details & manual attempts */}
             <div className="grid-col right-col">
               {activeSegment ? (
                 <>
                   {/* Segment Details & Leaderboard table */}
-                  <div className="card leaderboard-card">
+                  <div className="card leaderboard-card strava-theme">
+                    {/* Header with Title and Map Edit Button */}
                     <div className="leaderboard-header">
                       <div className="leaderboard-title-row">
-                        <h3>🥇 Leaderboard: {activeSegment.name}</h3>
+                        <h3>{activeSegment.name}</h3>
                         <button
                           className="btn btn-secondary btn-sm edit-seg-btn"
                           onClick={() => handleLoadSegmentToEditor(activeSegment.id, activeSegment.name)}
@@ -696,69 +741,113 @@ export default function App() {
                         </button>
                       </div>
                       <span className="leaderboard-subtitle">
-                        {(activeSegment.distanceMeters / 1000).toFixed(2)} km | {activeSegment.elevationGainMeters}m Gain
+                        {(activeSegment.distanceMeters / 1000).toFixed(2)} km | {activeSegment.elevationGainMeters}m Gain | {activeSegment.avgGradePercent}% Avg
                       </span>
                     </div>
 
-                    {getSelectedLeaderboard().length > 0 ? (
-                      <table className="leaderboard-table">
-                        <thead>
-                          <tr>
-                            <th>Rank</th>
-                            <th>Rider Name</th>
-                            <th>Time</th>
-                            <th>Avg Speed</th>
-                            <th>Date</th>
-                            <th>Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {getSelectedLeaderboard().map((att, idx) => (
-                            <tr key={att.id}>
-                              <td className="rank-td">
-                                {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `${idx + 1}`}
-                              </td>
-                              <td className="rider-td">{att.riderName}</td>
-                              <td className="time-td">{formatMsToTime(att.durationMs)}</td>
-                              <td className="speed-td">{att.avgSpeed.toFixed(1)} km/h</td>
-                              <td className="date-td">{att.date}</td>
-                              <td className="action-td">
-                                <button
-                                  className="btn-delete-attempt"
-                                  onClick={() => handleDeleteAttempt(att.id, att.riderName)}
-                                  title="Delete Attempt"
-                                >
-                                  🗑️
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    {/* Filter Period Pills */}
+                    <div className="filter-pills-row">
+                      <button
+                        className={`pill-btn ${filterPeriod === "all" ? "active" : ""}`}
+                        onClick={() => setFilterPeriod("all")}
+                      >
+                        All-Time
+                      </button>
+                      <button
+                        className={`pill-btn ${filterPeriod === "year" ? "active" : ""}`}
+                        onClick={() => setFilterPeriod("year")}
+                      >
+                        This Year
+                      </button>
+                      <button
+                        className={`pill-btn ${filterPeriod === "days30" ? "active" : ""}`}
+                        onClick={() => setFilterPeriod("days30")}
+                      >
+                        Recent 30 Days
+                      </button>
+                    </div>
+
+                    {/* PR Trophy Zone (Personal Best Highlight) */}
+                    {personalBest ? (
+                      <div className="pr-trophy-zone">
+                        <div className="trophy-rays">
+                          <span className="trophy-crown">👑</span>
+                        </div>
+                        <div className="pr-time-display">
+                          {formatMsToTime(personalBest.durationMs)}
+                        </div>
+                        <div className="pr-label">PERSONAL RECORD (PR)</div>
+                        <div className="pr-achieved-date">
+                          Achieved {getRelativeTime(personalBest.date)} ({personalBest.date})
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {/* Leaderboard Custom Rows */}
+                    {leaderboard.length > 0 ? (
+                      <div className="strava-leaderboard-list">
+                        <div className="leaderboard-list-header">
+                          <span>RANK</span>
+                          <span>ATTEMPT DATE</span>
+                          <span className="text-right">TIME / SPEED</span>
+                        </div>
+
+                        {leaderboard.map((att, idx) => (
+                          <div key={att.id} className="leaderboard-row-item">
+                            <div className="row-rank">
+                              {idx === 0 ? (
+                                <span className="crown-badge gold">👑</span>
+                              ) : idx === 1 ? (
+                                <span className="crown-badge silver">👑</span>
+                              ) : idx === 2 ? (
+                                <span className="crown-badge bronze">👑</span>
+                              ) : (
+                                <span className="rank-num">{idx + 1}</span>
+                              )}
+                            </div>
+
+                            <div className="row-avatar">
+                              <span className="avatar-placeholder">🚴</span>
+                            </div>
+
+                            <div className="row-info">
+                              <span className="attempt-date">{att.date}</span>
+                              <span className="attempt-relative">
+                                {getRelativeTime(att.date)}
+                              </span>
+                            </div>
+
+                            <div className="row-results">
+                              <span className="attempt-time">{formatMsToTime(att.durationMs)}</span>
+                              <span className="attempt-speed">{att.avgSpeed.toFixed(1)} km/h</span>
+                            </div>
+
+                            <div className="row-actions">
+                              <button
+                                className="btn-delete-attempt"
+                                onClick={() => handleDeleteAttempt(att.id, att.date)}
+                                title="Delete Attempt"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     ) : (
                       <div className="empty-leaderboard-message">
-                        No ride records saved on this segment yet. Register records below!
+                        No ride records saved on this segment yet. Register your first ride below!
                       </div>
                     )}
                   </div>
 
-                  {/* Add Attempt Form */}
+                  {/* Add Attempt Form (No Rider Name input!) */}
                   <div className="card add-attempt-card">
                     <h3>Add Ride Record (기록 직접 등록)</h3>
                     <form onSubmit={handleAddAttempt} className="attempt-form">
                       <div className="form-row">
                         <div className="form-group flex-1">
-                          <label>Rider Name</label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="e.g. Han"
-                            value={newRiderName}
-                            onChange={(e) => setNewRiderName(e.target.value)}
-                          />
-                        </div>
-                        <div className="form-group flex-1">
-                          <label>Date</label>
+                          <label>Ride Date</label>
                           <input
                             type="date"
                             required
@@ -766,8 +855,6 @@ export default function App() {
                             onChange={(e) => setNewRideDate(e.target.value)}
                           />
                         </div>
-                      </div>
-                      <div className="form-row">
                         <div className="form-group flex-1">
                           <label>Duration (mm:ss or hh:mm:ss)</label>
                           <input
@@ -803,8 +890,7 @@ export default function App() {
                 <div className="card welcome-card">
                   <h3>Select a Segment</h3>
                   <p>
-                    Please select a registered segment from the left panel list to view its cloud leaderboard and
-                    rankings.
+                    Please select a registered segment from the left panel list to view your personal leaderboard.
                   </p>
                 </div>
               )}
