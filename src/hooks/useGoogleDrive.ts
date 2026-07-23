@@ -588,6 +588,37 @@ export function useGoogleDrive() {
     }
   };
 
+  // Download a GPX file content by name
+  const downloadGPXFile = async (fileName: string): Promise<string | null> => {
+    if (!accessToken) return null;
+    setLoading(true);
+    try {
+      const folderId = await findOrCreateFolder(accessToken);
+      if (!folderId) throw new Error("Could not find app folder");
+
+      const query = encodeURIComponent(`name = '${fileName}' and '${folderId}' in parents and trashed = false`);
+      const checkRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const checkData = await checkRes.json();
+
+      if (checkData.files && checkData.files.length > 0) {
+        const fileId = checkData.files[0].id;
+        const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (fileRes.ok) {
+          return await fileRes.text();
+        }
+      }
+      return null;
+    } catch (e) {
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     accessToken,
     clientId,
@@ -601,6 +632,7 @@ export function useGoogleDrive() {
     saveSegment,
     deleteSegment,
     renameSegment,
+    downloadGPXFile,
     addAttemptToCloud,
     deleteAttemptFromCloud,
     refreshCatalog: loadCatalog,

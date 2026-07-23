@@ -53,6 +53,7 @@ export default function App() {
     saveSegment,
     deleteSegment,
     renameSegment,
+    downloadGPXFile,
     addAttemptToCloud,
     deleteAttemptFromCloud,
   } = useGoogleDrive();
@@ -332,6 +333,32 @@ export default function App() {
           setSelectedSegId(newFileName);
         }
       }
+    }
+  };
+
+  const handleLoadSegmentToEditor = async (id: string, name: string) => {
+    const gpxXml = await downloadGPXFile(id);
+    if (!gpxXml) {
+      alert("Failed to download segment GPX file from Google Drive.");
+      return;
+    }
+    try {
+      const parsed = parseGPX(gpxXml);
+      if (parsed.points.length < 2) {
+        alert("Downloaded GPX is invalid.");
+        return;
+      }
+      setGpxData(parsed);
+      setStartIndex(0);
+      setEndIndex(parsed.points.length - 1);
+      setSegmentName(name);
+      setDetectedClimbs([]);
+      setSelectedClimbIdx(-1);
+      setCheckedClimbs({});
+      setActiveTab("register");
+      alert(`🎉 Loaded "${name}" in the Route Register! You can now view and edit its range.`);
+    } catch (err) {
+      alert("Failed to parse downloaded GPX.");
     }
   };
 
@@ -651,7 +678,16 @@ export default function App() {
                   {/* Segment Details & Leaderboard table */}
                   <div className="card leaderboard-card">
                     <div className="leaderboard-header">
-                      <h3>🥇 Leaderboard: {activeSegment.name}</h3>
+                      <div className="leaderboard-title-row">
+                        <h3>🥇 Leaderboard: {activeSegment.name}</h3>
+                        <button
+                          className="btn btn-secondary btn-sm edit-seg-btn"
+                          onClick={() => handleLoadSegmentToEditor(activeSegment.id, activeSegment.name)}
+                          disabled={loading}
+                        >
+                          🗺️ View/Edit Route (구간 보기/편집)
+                        </button>
+                      </div>
                       <span className="leaderboard-subtitle">
                         {(activeSegment.distanceMeters / 1000).toFixed(2)} km | {activeSegment.elevationGainMeters}m Gain
                       </span>
