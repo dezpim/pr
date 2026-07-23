@@ -681,3 +681,214 @@ body {
 .climb-name-input:focus {
   border-color: #1A73E8;
 }
+
+/* Header Tab Navigation */
+.header-nav {
+  display: flex;
+  gap: 16px;
+}
+
+.nav-tab-btn {
+  background: none;
+  border: none;
+  color: #808080;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 16px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.nav-tab-btn:hover {
+  background-color: #1E1E24;
+  color: #E2E8F0;
+}
+
+.nav-tab-btn.active {
+  background-color: #1A73E8;
+  color: #FFF;
+}
+
+/* Climbs List Header & Merge Button */
+.climbs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.climbs-header h3 {
+  margin-bottom: 0;
+}
+
+.merge-btn {
+  background-color: #1A73E8;
+  color: #FFF;
+  border-radius: 6px;
+  font-size: 12px;
+  padding: 6px 12px;
+}
+
+.merge-btn:hover {
+  background-color: #1557B0;
+}
+
+.climb-checkbox-wrapper {
+  margin-right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.climb-checkbox-wrapper input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #1A73E8;
+  cursor: pointer;
+}
+
+/* Catalog selector in Ranking Tab */
+.catalog-vertical-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.catalog-item-interactive {
+  padding: 14px 16px;
+  background-color: #1E1E24;
+  border: 1px solid #2D2D35;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+
+.catalog-item-interactive:hover {
+  border-color: #4A4A52;
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.catalog-item-interactive.active {
+  border-color: #1A73E8;
+  background-color: rgba(26, 115, 232, 0.05);
+}
+
+.empty-catalog-message, .empty-leaderboard-message, .no-climbs-message {
+  padding: 24px;
+  text-align: center;
+  color: #808080;
+  font-size: 13px;
+  border: 1px dashed #1E1E24;
+  border-radius: 8px;
+}
+
+/* Leaderboard Details & Table styling */
+.leaderboard-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 20px;
+}
+
+.leaderboard-header h3 {
+  margin-bottom: 0;
+  font-size: 18px;
+}
+
+.leaderboard-subtitle {
+  font-size: 12px;
+  color: #808080;
+}
+
+.leaderboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  text-align: left;
+}
+
+.leaderboard-table th, .leaderboard-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #1E1E24;
+}
+
+.leaderboard-table th {
+  color: #808080;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+.leaderboard-table tr:hover td {
+  background-color: rgba(255, 255, 255, 0.01);
+}
+
+.rank-td {
+  font-weight: bold;
+  font-size: 15px;
+  width: 60px;
+}
+
+.rider-td {
+  font-weight: 600;
+  color: #FFF;
+}
+
+.time-td {
+  font-family: monospace;
+  font-size: 14px;
+  color: #1A73E8;
+  font-weight: 600;
+}
+
+.speed-td {
+  color: #4CAF50;
+  font-weight: 500;
+}
+
+.btn-delete-attempt {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-delete-attempt:hover {
+  background-color: rgba(244, 67, 54, 0.15);
+}
+
+/* Manual Record Form styling */
+.attempt-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-row {
+  display: flex;
+  gap: 16px;
+}
+
+@media (max-width: 500px) {
+  .form-row {
+    flex-direction: column;
+    gap: 16px;
+  }
+}
+
+.flex-1 {
+  flex: 1;
+}
+

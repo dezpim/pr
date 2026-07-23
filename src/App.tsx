@@ -4,8 +4,40 @@ import type { GPXData } from "./utils/gpxParser";
 import { detectClimbs } from "./utils/hillDetector";
 import type { ClimbCandidate } from "./utils/hillDetector";
 import { useGoogleDrive } from "./hooks/useGoogleDrive";
+import type { CloudAttempt } from "./hooks/useGoogleDrive";
 import { MapView } from "./components/MapView";
 import { ChartView } from "./components/ChartView";
+
+// Helper: Parse MM:SS or HH:MM:SS duration string to milliseconds
+function parseTimeToMs(timeStr: string): number {
+  const parts = timeStr.trim().split(":").map(Number);
+  if (parts.some(isNaN)) return 0;
+  
+  if (parts.length === 2) {
+    // MM:SS
+    return (parts[0] * 60 + parts[1]) * 1000;
+  } else if (parts.length === 3) {
+    // HH:MM:SS
+    return (parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000;
+  }
+  
+  // Fallback: try raw seconds
+  const sec = parseFloat(timeStr);
+  return isNaN(sec) ? 0 : sec * 1000;
+}
+
+// Helper: Format milliseconds to MM:SS or HH:MM:SS
+function formatMsToTime(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  }
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
 
 export default function App() {
   const {
@@ -14,13 +46,20 @@ export default function App() {
     userEmail,
     loading,
     catalog,
+    rankings,
     setClientId,
     login,
     logout,
     saveSegment,
     deleteSegment,
+    addAttemptToCloud,
+    deleteAttemptFromCloud,
   } = useGoogleDrive();
 
+  // Navigation
+  const [activeTab, setActiveTab] = useState<"register" | "ranking">("register");
+
+  // Registration states
   const [gpxData, setGpxData] = useState<GPXData | null>(null);
   const [startIndex, setStartIndex] = useState<number>(0);
   const [endIndex, setEndIndex] = useState<number>(0);
@@ -28,6 +67,15 @@ export default function App() {
   const [detectedClimbs, setDetectedClimbs] = useState<ClimbCandidate[]>([]);
   const [climbNames, setClimbNames] = useState<{ [key: number]: string }>({});
   const [selectedClimbIdx, setSelectedClimbIdx] = useState<number>(-1);
+  const [checkedClimbs, setCheckedClimbs] = useState<{ [key: number]: boolean }>({});
+
+  // Ranking states
+  const [selectedSegId, setSelectedSegId] = useState<string>("");
+  const [newRiderName, setNewRiderName] = useState<string>("");
+  const [newRideDate, setNewRideDate] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [newRideTime, setNewRideTime] = useState<string>("");
+  const [newRideSpeed, setNewRideSpeed] = useState<string>("");
+
   const [showSettings, setShowSettings] = useState<boolean>(!localStorage.getItem("gdrive_client_id"));
   const [tempClientId, setTempClientId] = useState<string>(clientId);
 
@@ -35,6 +83,13 @@ export default function App() {
   useEffect(() => {
     setTempClientId(clientId);
   }, [clientId]);
+
+  // Set default selected segment in ranking tab when catalog loads
+  useEffect(() => {
+    if (catalog.segments.length > 0 && !selectedSegId) {
+      setSelectedSegId(catalog.segments[0].id);
+    }
+  }, [catalog, selectedSegId]);
 
   // Handle GPX file upload
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -59,6 +114,7 @@ export default function App() {
         const climbs = detectClimbs(parsed.points);
         setDetectedClimbs(climbs);
         setSelectedClimbIdx(-1);
+        setCheckedClimbs({});
 
         // Pre-populate climb names
         const initialNames: { [key: number]: string } = {};
@@ -90,6 +146,45 @@ export default function App() {
     setClimbNames((prev) => ({ ...prev, [idx]: val }));
   };
 
+  // Checkbox toggle for merging
+  const handleClimbCheckToggle = (idx: number) => {
+    setCheckedClimbs((prev) => ({
+      ...prev,
+      [idx]: !prev[idx],
+    }));
+  };
+
+  // Merge selected climbs (includes downhills/valleys in between)
+  const handleMergeSelectedClimbs = () => {
+    const selectedIndices = Object.keys(checkedClimbs)
+      .map(Number)
+      .filter((idx) => checkedClimbs[idx]);
+
+    if (selectedIndices.length < 2) {
+      alert("Please select at least 2 climbs to merge.");
+      return;
+    }
+
+    // Sort selected indices
+    selectedIndices.sort((a, b) => a - b);
+
+    // Take minimum start index and maximum end index to span everything in between!
+    const minStart = Math.min(...selectedIndices.map((idx) => detectedClimbs[idx].startIndex));
+    const maxEnd = Math.max(...selectedIndices.map((idx) => detectedClimbs[idx].endIndex));
+
+    setStartIndex(minStart);
+    setEndIndex(maxEnd);
+    setSelectedClimbIdx(-1);
+
+    // Autofill name
+    const mergedNames = selectedIndices.map((idx) => `Hill ${idx + 1}`).join(" + ");
+    setSegmentName(`${gpxData?.name || "Merged Route"} - ${mergedNames} Merged`);
+    
+    // Clear selections
+    setCheckedClimbs({});
+    alert(`Merged ${selectedIndices.length} sections! The middle downhills/valleys are now included.`);
+  };
+
   const handleSaveSettings = () => {
     setClientId(tempClientId);
     setShowSettings(false);
@@ -115,7 +210,6 @@ export default function App() {
     if (!gpxData) return;
     const name = climbNames[idx]?.trim() || `Climb ${idx + 1}`;
 
-    // Temporarily set active map/chart segment to this row so the user sees it visually
     setStartIndex(climb.startIndex);
     setEndIndex(climb.endIndex);
     setSelectedClimbIdx(idx);
@@ -167,14 +261,72 @@ export default function App() {
     }
   };
 
-  const handleDeleteSegment = async (id: string, name: string) => {
-    if (window.confirm(`Are you sure you want to delete segment "${name}"?`)) {
-      const success = await deleteSegment(id);
+  // Add ranking attempt handler
+  const handleAddAttempt = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedSegId) return;
+    if (!newRiderName.trim() || !newRideTime.trim() || !newRideSpeed.trim()) {
+      alert("Please fill in all ranking fields.");
+      return;
+    }
+
+    const durationMs = parseTimeToMs(newRideTime);
+    if (durationMs <= 0) {
+      alert("Invalid Time format. Please enter as mm:ss or hh:mm:ss");
+      return;
+    }
+
+    const speed = parseFloat(newRideSpeed);
+    if (isNaN(speed) || speed <= 0) {
+      alert("Invalid speed. Enter a number (e.g. 25.5)");
+      return;
+    }
+
+    const success = await addAttemptToCloud(selectedSegId, {
+      riderName: newRiderName,
+      date: newRideDate,
+      durationMs,
+      avgSpeed: speed,
+    });
+
+    if (success) {
+      alert("🎉 Ride record successfully added to cloud leaderboard!");
+      setNewRiderName("");
+      setNewRideTime("");
+      setNewRideSpeed("");
+    }
+  };
+
+  // Delete attempt handler
+  const handleDeleteAttempt = async (attemptId: string, riderName: string) => {
+    if (window.confirm(`Are you sure you want to delete ${riderName}'s attempt?`)) {
+      const success = await deleteAttemptFromCloud(selectedSegId, attemptId);
       if (success) {
-        alert("🎉 Segment successfully deleted from Google Drive!");
+        alert("🎉 Ride record successfully deleted!");
       }
     }
   };
+
+  // Delete whole segment wrapper
+  const handleSegmentDelete = async (id: string, name: string) => {
+    if (window.confirm(`Are you sure you want to delete segment "${name}" from Drive?`)) {
+      const success = await deleteSegment(id);
+      if (success) {
+        alert("🎉 Segment successfully deleted!");
+        if (selectedSegId === id) {
+          setSelectedSegId(catalog.segments[0]?.id || "");
+        }
+      }
+    }
+  };
+
+  // Sort selected segment leaderboard attempts (fastest time first)
+  const getSelectedLeaderboard = (): CloudAttempt[] => {
+    const list = rankings[selectedSegId] || [];
+    return [...list].sort((a, b) => a.durationMs - b.durationMs);
+  };
+
+  const activeSegment = catalog.segments.find((s) => s.id === selectedSegId);
 
   return (
     <div className="app-container">
@@ -184,6 +336,23 @@ export default function App() {
           <span className="logo-icon">🏆</span>
           <h1>Leaderboard Segment Manager</h1>
         </div>
+        
+        {/* Tab Navigation Menu */}
+        <nav className="header-nav">
+          <button
+            className={`nav-tab-btn ${activeTab === "register" ? "active" : ""}`}
+            onClick={() => setActiveTab("register")}
+          >
+            📂 Route Register (구간 등록)
+          </button>
+          <button
+            className={`nav-tab-btn ${activeTab === "ranking" ? "active" : ""}`}
+            onClick={() => setActiveTab("ranking")}
+          >
+            🥇 Leaderboard (랭킹 조회)
+          </button>
+        </nav>
+
         <div className="header-actions">
           {accessToken ? (
             <div className="user-profile">
@@ -203,7 +372,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* 2. Main Content Grid */}
+      {/* 2. Main Content Layout */}
       <main className="app-main">
         {/* Settings Overlay / Modal Panel */}
         {showSettings && (
@@ -238,185 +407,346 @@ export default function App() {
           </div>
         )}
 
-        <div className="main-grid">
-          {/* Left Column: GPX Upload & Map */}
-          <div className="grid-col left-col">
-            <div className="card upload-card">
-              <h3>Upload GPX Route File</h3>
-              <div className="file-drop-zone">
-                <input type="file" accept=".gpx" onChange={handleFileUpload} id="gpx-file-input" />
-                <label htmlFor="gpx-file-input">
-                  <span className="upload-icon">📂</span>
-                  <strong>Choose a GPX file</strong> or drag it here
-                </label>
+        {/* Tab 1: GPX Segment Parser & Register */}
+        {activeTab === "register" && (
+          <div className="main-grid">
+            {/* Left Column: GPX Upload & Map */}
+            <div className="grid-col left-col">
+              <div className="card upload-card">
+                <h3>Upload GPX Route File</h3>
+                <div className="file-drop-zone">
+                  <input type="file" accept=".gpx" onChange={handleFileUpload} id="gpx-file-input" />
+                  <label htmlFor="gpx-file-input">
+                    <span className="upload-icon">📂</span>
+                    <strong>Choose a GPX file</strong> or drag it here
+                  </label>
+                </div>
+              </div>
+
+              {gpxData && (
+                <div className="card map-card">
+                  <h3>Route Map</h3>
+                  <div className="map-view-wrapper">
+                    <MapView points={gpxData.points} startIndex={startIndex} endIndex={endIndex} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Right Column: Trimming Chart, Hill Analyzer, Drive Upload */}
+            <div className="grid-col right-col">
+              {gpxData ? (
+                <>
+                  {/* Trimming Chart */}
+                  <div className="card chart-card">
+                    <h3>Elevation Profile (Trim Segment)</h3>
+                    <ChartView
+                      points={gpxData.points}
+                      startIndex={startIndex}
+                      endIndex={endIndex}
+                      onTrimChange={handleTrimChange}
+                    />
+                    <div className="segment-metrics">
+                      <div className="metric-box">
+                        <span className="metric-val">{(distance / 1000).toFixed(2)} km</span>
+                        <span className="metric-lbl">Distance</span>
+                      </div>
+                      <div className="metric-box">
+                        <span className="metric-val">{gain.toFixed(0)} m</span>
+                        <span className="metric-lbl">Elevation Gain</span>
+                      </div>
+                      <div className="metric-box">
+                        <span className="metric-val">{grade.toFixed(1)}%</span>
+                        <span className="metric-lbl">Avg Slope</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Auto Detected Climbs List */}
+                  <div className="card climbs-card">
+                    <div className="climbs-header">
+                      <h3>Auto-Detected Hills (구간 분리 및 등록)</h3>
+                      {Object.values(checkedClimbs).some(Boolean) && (
+                        <button
+                          className="btn btn-secondary btn-sm merge-btn"
+                          onClick={handleMergeSelectedClimbs}
+                        >
+                          🔗 Merge Selected (선택 구간 병합)
+                        </button>
+                      )}
+                    </div>
+                    {detectedClimbs.length > 0 ? (
+                      <div className="climbs-list">
+                        {detectedClimbs.map((climb, idx) => (
+                          <div
+                            key={idx}
+                            className={`climb-item ${selectedClimbIdx === idx ? "active" : ""}`}
+                            onClick={() => applyPresetClimb(climb, idx)}
+                          >
+                            <div className="climb-checkbox-wrapper" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={!!checkedClimbs[idx]}
+                                onChange={() => handleClimbCheckToggle(idx)}
+                              />
+                            </div>
+                            <div className="climb-info">
+                              <span className="climb-name">⛰️ Hill {idx + 1}</span>
+                              <span className="climb-stats">
+                                {(climb.distance / 1000).toFixed(2)} km, {climb.elevationGain.toFixed(0)}m Gain,{" "}
+                                {climb.avgGrade.toFixed(1)}%
+                              </span>
+                            </div>
+                            
+                            {/* Inline Naming and Saving */}
+                            <div className="climb-item-actions">
+                              <input
+                                type="text"
+                                className="climb-name-input"
+                                placeholder="Enter segment name"
+                                value={climbNames[idx] || ""}
+                                onChange={(e) => handleClimbNameChange(idx, e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                              <button
+                                className="btn btn-primary btn-sm"
+                                disabled={loading || !accessToken}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSaveClimbRow(climb, idx);
+                                }}
+                              >
+                                Save
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="no-climbs-message">
+                        No significant uphill climbs detected in this route. Adjust sliders manually.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Save segment to Drive */}
+                  <div className="card save-card">
+                    <h3>Register Custom Trimmed Segment</h3>
+                    <div className="form-group">
+                      <label>Segment Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Custom Trim Uphill"
+                        value={segmentName}
+                        onChange={(e) => setSegmentName(e.target.value)}
+                      />
+                    </div>
+                    <button
+                      className="btn btn-primary btn-block btn-lg"
+                      onClick={handleUploadToDrive}
+                      disabled={loading || !accessToken}
+                    >
+                      {loading ? "Uploading..." : "Save to Google Drive"}
+                    </button>
+                    {!accessToken && (
+                      <p className="login-warning">Please sign in with Google to enable Drive uploads.</p>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="card welcome-card">
+                  <h3>Welcome to Segment Manager</h3>
+                  <p>
+                    To get started, upload a GPX ride track on the left panel. The app will automatically analyze
+                    the elevation data to suggest climbs, and allow you to trim it and upload directly to Google Drive.
+                  </p>
+                  <div className="features-list">
+                    <div className="feature-item">
+                      <span>⛰️</span>
+                      <strong>Automatic Hill Extraction:</strong> Instantly finds climbs from Valley-to-Summit.
+                    </div>
+                    <div className="feature-item">
+                      <span>🔗</span>
+                      <strong>Downhill Merging:</strong> Merge multiple climbs including the valleys between them.
+                    </div>
+                    <div className="feature-item">
+                      <span>✂️</span>
+                      <strong>Precise Trimming:</strong> Adjust start/end markers on the interactive elevation profile.
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Tab 2: Cloud Leaderboard / Rankings Viewer */}
+        {activeTab === "ranking" && (
+          <div className="main-grid">
+            {/* Left Column: Registered Segments Catalog list */}
+            <div className="grid-col left-col">
+              <div className="card catalog-card">
+                <h3>Registered Segments ({catalog.segments.length})</h3>
+                {catalog.segments.length > 0 ? (
+                  <div className="catalog-vertical-list">
+                    {catalog.segments.map((seg) => (
+                      <div
+                        key={seg.id}
+                        className={`catalog-item-interactive ${selectedSegId === seg.id ? "active" : ""}`}
+                        onClick={() => setSelectedSegId(seg.id)}
+                      >
+                        <div className="catalog-info">
+                          <span className="catalog-name">{seg.name}</span>
+                          <span className="catalog-stats">
+                            {(seg.distanceMeters / 1000).toFixed(2)} km | {seg.elevationGainMeters}m Gain |{" "}
+                            {seg.avgGradePercent}% Avg
+                          </span>
+                        </div>
+                        <button
+                          className="btn-delete-catalog"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSegmentDelete(seg.id, seg.name);
+                          }}
+                          title="Delete Segment"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-catalog-message">
+                    No segments registered in Google Drive yet. Go to Route Register tab to create segments!
+                  </div>
+                )}
               </div>
             </div>
 
-            {gpxData && (
-              <div className="card map-card">
-                <h3>Route Map</h3>
-                <div className="map-view-wrapper">
-                  <MapView points={gpxData.points} startIndex={startIndex} endIndex={endIndex} />
-                </div>
-              </div>
-            )}
-          </div>
+            {/* Right Column: Leaderboard details & manual attempt logs */}
+            <div className="grid-col right-col">
+              {activeSegment ? (
+                <>
+                  {/* Segment Details & Leaderboard table */}
+                  <div className="card leaderboard-card">
+                    <div className="leaderboard-header">
+                      <h3>🥇 Leaderboard: {activeSegment.name}</h3>
+                      <span className="leaderboard-subtitle">
+                        {(activeSegment.distanceMeters / 1000).toFixed(2)} km | {activeSegment.elevationGainMeters}m Gain
+                      </span>
+                    </div>
 
-          {/* Right Column: Trimming Chart, Hill Analyzer, Drive Upload */}
-          <div className="grid-col right-col">
-            {gpxData ? (
-              <>
-                {/* Trimming Chart */}
-                <div className="card chart-card">
-                  <h3>Elevation Profile (Trim Segment)</h3>
-                  <ChartView
-                    points={gpxData.points}
-                    startIndex={startIndex}
-                    endIndex={endIndex}
-                    onTrimChange={handleTrimChange}
-                  />
-                  <div className="segment-metrics">
-                    <div className="metric-box">
-                      <span className="metric-val">{(distance / 1000).toFixed(2)} km</span>
-                      <span className="metric-lbl">Distance</span>
-                    </div>
-                    <div className="metric-box">
-                      <span className="metric-val">{gain.toFixed(0)} m</span>
-                      <span className="metric-lbl">Elevation Gain</span>
-                    </div>
-                    <div className="metric-box">
-                      <span className="metric-val">{grade.toFixed(1)}%</span>
-                      <span className="metric-lbl">Avg Slope</span>
-                    </div>
+                    {getSelectedLeaderboard().length > 0 ? (
+                      <table className="leaderboard-table">
+                        <thead>
+                          <tr>
+                            <th>Rank</th>
+                            <th>Rider Name</th>
+                            <th>Time</th>
+                            <th>Avg Speed</th>
+                            <th>Date</th>
+                            <th>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {getSelectedLeaderboard().map((att, idx) => (
+                            <tr key={att.id}>
+                              <td className="rank-td">
+                                {idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : `${idx + 1}`}
+                              </td>
+                              <td className="rider-td">{att.riderName}</td>
+                              <td className="time-td">{formatMsToTime(att.durationMs)}</td>
+                              <td className="speed-td">{att.avgSpeed.toFixed(1)} km/h</td>
+                              <td className="date-td">{att.date}</td>
+                              <td className="action-td">
+                                <button
+                                  className="btn-delete-attempt"
+                                  onClick={() => handleDeleteAttempt(att.id, att.riderName)}
+                                  title="Delete Attempt"
+                                >
+                                  🗑️
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div className="empty-leaderboard-message">
+                        No ride records saved on this segment yet. Register records below!
+                      </div>
+                    )}
                   </div>
-                </div>
 
-                {/* Auto Detected Climbs List */}
-                <div className="card climbs-card">
-                  <h3>Auto-Detected Hills (구간 분리 및 등록)</h3>
-                  {detectedClimbs.length > 0 ? (
-                    <div className="climbs-list">
-                      {detectedClimbs.map((climb, idx) => (
-                        <div
-                          key={idx}
-                          className={`climb-item ${selectedClimbIdx === idx ? "active" : ""}`}
-                          onClick={() => applyPresetClimb(climb, idx)}
-                        >
-                          <div className="climb-info">
-                            <span className="climb-name">⛰️ Hill {idx + 1}</span>
-                            <span className="climb-stats">
-                              {(climb.distance / 1000).toFixed(2)} km, {climb.elevationGain.toFixed(0)}m Gain,{" "}
-                              {climb.avgGrade.toFixed(1)}%
-                            </span>
-                          </div>
-                          
-                          {/* Inline Naming and Saving */}
-                          <div className="climb-item-actions">
-                            <input
-                              type="text"
-                              className="climb-name-input"
-                              placeholder="Enter segment name"
-                              value={climbNames[idx] || ""}
-                              onChange={(e) => handleClimbNameChange(idx, e.target.value)}
-                              onClick={(e) => e.stopPropagation()} // Prevent selecting row on click
-                            />
-                            <button
-                              className="btn btn-primary btn-sm"
-                              disabled={loading || !accessToken}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleSaveClimbRow(climb, idx);
-                              }}
-                            >
-                              Save
-                            </button>
-                          </div>
+                  {/* Add Attempt Form */}
+                  <div className="card add-attempt-card">
+                    <h3>Add Ride Record (기록 직접 등록)</h3>
+                    <form onSubmit={handleAddAttempt} className="attempt-form">
+                      <div className="form-row">
+                        <div className="form-group flex-1">
+                          <label>Rider Name</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. Han"
+                            value={newRiderName}
+                            onChange={(e) => setNewRiderName(e.target.value)}
+                          />
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="no-climbs-message">
-                      No significant uphill climbs detected in this route. Adjust sliders manually.
-                    </div>
-                  )}
-                </div>
-
-                {/* Save segment to Drive */}
-                <div className="card save-card">
-                  <h3>Register Custom Trimmed Segment</h3>
-                  <div className="form-group">
-                    <label>Segment Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Custom Trim Uphill"
-                      value={segmentName}
-                      onChange={(e) => setSegmentName(e.target.value)}
-                    />
-                  </div>
-                  <button
-                    className="btn btn-primary btn-block btn-lg"
-                    onClick={handleUploadToDrive}
-                    disabled={loading || !accessToken}
-                  >
-                    {loading ? "Uploading..." : "Save to Google Drive"}
-                  </button>
-                  {!accessToken && (
-                    <p className="login-warning">Please sign in with Google to enable Drive uploads.</p>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="card welcome-card">
-                <h3>Welcome to Segment Manager</h3>
-                <p>
-                  To get started, upload a GPX ride track on the left panel. The app will automatically analyze
-                  the elevation data to suggest climbs, and allow you to trim it and upload directly to Google Drive.
-                </p>
-                <div className="features-list">
-                  <div className="feature-item">
-                    <span>⛰️</span>
-                    <strong>Automatic Hill Extraction:</strong> Instantly finds climbs from Valley-to-Summit.
-                  </div>
-                  <div className="feature-item">
-                    <span>✂️</span>
-                    <strong>Precise Trimming:</strong> Adjust start/end markers on the interactive elevation profile.
-                  </div>
-                  <div className="feature-item">
-                    <span>☁️</span>
-                    <strong>Google Drive Sync:</strong> Saves directly to cloud for auto-syncing with OsmAnd Leaderboard.
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* List of segments currently in Drive */}
-            {accessToken && catalog.segments.length > 0 && (
-              <div className="card catalog-card">
-                <h3>Segments in Google Drive ({catalog.segments.length})</h3>
-                <div className="catalog-list">
-                  {catalog.segments.map((seg, idx) => (
-                    <div key={idx} className="catalog-item">
-                      <div className="catalog-info">
-                        <span className="catalog-name">{seg.name}</span>
-                        <span className="catalog-stats">
-                          {(seg.distanceMeters / 1000).toFixed(2)} km, {seg.elevationGainMeters}m Gain,{" "}
-                          {seg.avgGradePercent}% Avg
-                        </span>
+                        <div className="form-group flex-1">
+                          <label>Date</label>
+                          <input
+                            type="date"
+                            required
+                            value={newRideDate}
+                            onChange={(e) => setNewRideDate(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <div className="form-row">
+                        <div className="form-group flex-1">
+                          <label>Duration (mm:ss or hh:mm:ss)</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. 05:42"
+                            value={newRideTime}
+                            onChange={(e) => setNewRideTime(e.target.value)}
+                          />
+                        </div>
+                        <div className="form-group flex-1">
+                          <label>Avg Speed (km/h)</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. 23.4"
+                            value={newRideSpeed}
+                            onChange={(e) => setNewRideSpeed(e.target.value)}
+                          />
+                        </div>
                       </div>
                       <button
-                        className="btn-delete-catalog"
-                        onClick={() => handleDeleteSegment(seg.id, seg.name)}
-                        title="Delete Segment"
+                        type="submit"
+                        className="btn btn-primary btn-block btn-lg"
+                        disabled={loading || !accessToken}
                       >
-                        🗑️
+                        Add Record to Leaderboard
                       </button>
-                    </div>
-                  ))}
+                    </form>
+                  </div>
+                </>
+              ) : (
+                <div className="card welcome-card">
+                  <h3>Select a Segment</h3>
+                  <p>
+                    Please select a registered segment from the left panel list to view its cloud leaderboard and
+                    rankings.
+                  </p>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </main>
     </div>
   );

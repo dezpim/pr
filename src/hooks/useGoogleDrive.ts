@@ -16,12 +16,25 @@ export interface Catalog {
   segments: CatalogSegment[];
 }
 
+export interface CloudAttempt {
+  id: string;
+  riderName: string;
+  date: string;
+  durationMs: number;
+  avgSpeed: number;
+}
+
+export interface CloudRankings {
+  [segmentId: string]: CloudAttempt[];
+}
+
 export function useGoogleDrive() {
   const [accessToken, setAccessToken] = useState<string | null>(() => localStorage.getItem("gdrive_access_token"));
   const [clientId, setClientId] = useState<string>(() => localStorage.getItem("gdrive_client_id") || "");
   const [userEmail, setUserEmail] = useState<string | null>(() => localStorage.getItem("gdrive_user_email"));
   const [loading, setLoading] = useState<boolean>(false);
   const [catalog, setCatalog] = useState<Catalog>({ segments: [] });
+  const [rankings, setRankings] = useState<CloudRankings>({});
 
   // Save configurations to localStorage
   useEffect(() => {
@@ -78,6 +91,7 @@ export function useGoogleDrive() {
     setUserEmail(null);
     localStorage.removeItem("gdrive_user_email");
     setCatalog({ segments: [] });
+    setRankings({});
   }, []);
 
   const fetchUserInfo = async (token: string) => {
@@ -134,7 +148,7 @@ export function useGoogleDrive() {
     }
   };
 
-  // Load catalog.json
+  // Load catalog.json and rankings.json
   const loadCatalog = useCallback(async () => {
     if (!accessToken) return;
     setLoading(true);
@@ -142,26 +156,48 @@ export function useGoogleDrive() {
       const folderId = await findOrCreateFolder(accessToken);
       if (!folderId) throw new Error("Could not access/create Leaderboard_Segments folder");
 
-      // Search for catalog.json inside folder
+      // 1. Search and load catalog.json
       const query = encodeURIComponent(`name = 'catalog.json' and '${folderId}' in parents and trashed = false`);
       const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&spaces=drive`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
-      if (!res.ok) throw new Error("Error searching for catalog.json");
-      const listData = await res.json();
-
-      if (listData.files && listData.files.length > 0) {
-        const fileId = listData.files[0].id;
-        const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (fileRes.ok) {
-          const cat = await fileRes.json();
-          setCatalog(cat);
+      if (res.ok) {
+        const listData = await res.json();
+        if (listData.files && listData.files.length > 0) {
+          const fileId = listData.files[0].id;
+          const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (fileRes.ok) {
+            const cat = await fileRes.ok ? await fileRes.json() : { segments: [] };
+            setCatalog(cat);
+          }
+        } else {
+          setCatalog({ segments: [] });
         }
-      } else {
-        setCatalog({ segments: [] });
+      }
+
+      // 2. Search and load rankings.json
+      const rankQuery = encodeURIComponent(`name = 'rankings.json' and '${folderId}' in parents and trashed = false`);
+      const rankRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${rankQuery}&spaces=drive`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (rankRes.ok) {
+        const rankListData = await rankRes.json();
+        if (rankListData.files && rankListData.files.length > 0) {
+          const fileId = rankListData.files[0].id;
+          const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (fileRes.ok) {
+            const ranks = await fileRes.json();
+            setRankings(ranks);
+          }
+        } else {
+          setRankings({});
+        }
       }
     } catch (e) {
       // Ignored or reset
@@ -186,7 +222,6 @@ export function useGoogleDrive() {
       if (!folderId) throw new Error("Could not find/create app folder");
 
       const fileName = `${name.replace(/[^a-zA-Z0-9가-힣_]/g, "_")}.gpx`;
-
       const fileContentBlob = new Blob([gpxContent], { type: "application/gpx+xml" });
 
       // Search if file already exists to overwrite it
@@ -292,12 +327,91 @@ export function useGoogleDrive() {
     }
   };
 
-  // Load catalog on login/startup
-  useEffect(() => {
-    if (accessToken) {
-      loadCatalog();
+  // Save rankings.json file to Google Drive
+  const saveRankingsToDrive = async (updatedRankings: CloudRankings): Promise<boolean> => {
+    if (!accessToken) return false;
+    setLoading(true);
+    try {
+      const folderId = await findOrCreateFolder(accessToken);
+      if (!folderId) throw new Error("Could not find app folder");
+
+      const rankQuery = encodeURIComponent(`name = 'rankings.json' and '${folderId}' in parents and trashed = false`);
+      const rankCheck = await fetch(`https://www.googleapis.com/drive/v3/files?q=${rankQuery}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const rankCheckData = await rankCheck.json();
+
+      let rankUploadRes;
+      const rankContentBlob = new Blob([JSON.stringify(updatedRankings, null, 2)], { type: "application/json" });
+
+      if (rankCheckData.files && rankCheckData.files.length > 0) {
+        const fileId = rankCheckData.files[0].id;
+        const rankUpdateMetadata = { name: "rankings.json" };
+        const rankUpdateFormData = new FormData();
+        rankUpdateFormData.append("metadata", new Blob([JSON.stringify(rankUpdateMetadata)], { type: "application/json" }));
+        rankUpdateFormData.append("file", rankContentBlob);
+
+        rankUploadRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${accessToken}` },
+          body: rankUpdateFormData,
+        });
+      } else {
+        const rankCreateMetadata = { name: "rankings.json", parents: [folderId] };
+        const rankCreateFormData = new FormData();
+        rankCreateFormData.append("metadata", new Blob([JSON.stringify(rankCreateMetadata)], { type: "application/json" }));
+        rankCreateFormData.append("file", rankContentBlob);
+
+        rankUploadRes = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}` },
+          body: rankCreateFormData,
+        });
+      }
+
+      if (!rankUploadRes.ok) {
+        const errorText = await rankUploadRes.text();
+        throw new Error(`Rankings update failed: ${rankUploadRes.status} ${rankUploadRes.statusText} - ${errorText}`);
+      }
+
+      setRankings(updatedRankings);
+      return true;
+    } catch (e: any) {
+      alert("Error saving rankings: " + e.message);
+      return false;
+    } finally {
+      setLoading(false);
     }
-  }, [accessToken, loadCatalog]);
+  };
+
+  // Add attempt to cloud
+  const addAttemptToCloud = async (
+    segmentId: string,
+    attempt: Omit<CloudAttempt, "id">
+  ): Promise<boolean> => {
+    const newAttempt: CloudAttempt = {
+      id: Date.now().toString(),
+      ...attempt,
+    };
+    const currentAttempts = rankings[segmentId] || [];
+    const updatedAttempts = [...currentAttempts, newAttempt];
+    const updatedRankings = {
+      ...rankings,
+      [segmentId]: updatedAttempts,
+    };
+    return await saveRankingsToDrive(updatedRankings);
+  };
+
+  // Delete attempt from cloud
+  const deleteAttemptFromCloud = async (segmentId: string, attemptId: string): Promise<boolean> => {
+    if (!rankings[segmentId]) return false;
+    const updatedAttempts = rankings[segmentId].filter((att) => att.id !== attemptId);
+    const updatedRankings = {
+      ...rankings,
+      [segmentId]: updatedAttempts,
+    };
+    return await saveRankingsToDrive(updatedRankings);
+  };
 
   // Delete a segment and update catalog
   const deleteSegment = async (segmentId: string): Promise<boolean> => {
@@ -329,6 +443,11 @@ export function useGoogleDrive() {
       // 2. Filter catalog segments
       const updatedSegments = catalog.segments.filter((s) => s.id !== segmentId);
       const newCatalog: Catalog = { segments: updatedSegments };
+
+      // 3. Remove rankings entry for this segment
+      const updatedRankings = { ...rankings };
+      delete updatedRankings[segmentId];
+      await saveRankingsToDrive(updatedRankings);
 
       // Find catalog.json file ID
       const catQuery = encodeURIComponent(`name = 'catalog.json' and '${folderId}' in parents and trashed = false`);
@@ -388,11 +507,14 @@ export function useGoogleDrive() {
     userEmail,
     loading,
     catalog,
+    rankings,
     setClientId,
     login,
     logout,
     saveSegment,
     deleteSegment,
+    addAttemptToCloud,
+    deleteAttemptFromCloud,
     refreshCatalog: loadCatalog,
   };
 }
