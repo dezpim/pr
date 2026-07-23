@@ -58,8 +58,8 @@ export default function App() {
     deleteAttemptFromCloud,
   } = useGoogleDrive();
 
-  // Navigation
-  const [activeTab, setActiveTab] = useState<"register" | "ranking">("register");
+  // Navigation: false = Leaderboard (default), true = Register/Edit GPX Editor
+  const [isRegistering, setIsRegistering] = useState<boolean>(false);
 
   // Registration states
   const [gpxData, setGpxData] = useState<GPXData | null>(null);
@@ -167,10 +167,8 @@ export default function App() {
       return;
     }
 
-    // Sort selected indices
     selectedIndices.sort((a, b) => a - b);
 
-    // Take minimum start index and maximum end index to span everything in between!
     const minStart = Math.min(...selectedIndices.map((idx) => detectedClimbs[idx].startIndex));
     const maxEnd = Math.max(...selectedIndices.map((idx) => detectedClimbs[idx].endIndex));
 
@@ -178,11 +176,9 @@ export default function App() {
     setEndIndex(maxEnd);
     setSelectedClimbIdx(-1);
 
-    // Autofill name
     const mergedNames = selectedIndices.map((idx) => `Hill ${idx + 1}`).join(" + ");
     setSegmentName(`${gpxData?.name || "Merged Route"} - ${mergedNames} Merged`);
     
-    // Clear selections
     setCheckedClimbs({});
     alert(`Merged ${selectedIndices.length} sections! The middle downhills/valleys are now included.`);
   };
@@ -233,6 +229,9 @@ export default function App() {
 
     if (success) {
       alert(`🎉 Segment "${name}" successfully saved to Google Drive!`);
+      const newFileName = `${name.replace(/[^a-zA-Z0-9가-힣_]/g, "_")}.gpx`;
+      setSelectedSegId(newFileName);
+      setIsRegistering(false); // Redirect to leaderboard
     }
   };
 
@@ -260,6 +259,9 @@ export default function App() {
 
     if (success) {
       alert("🎉 Segment successfully saved to Google Drive and catalog updated!");
+      const newFileName = `${segmentName.replace(/[^a-zA-Z0-9가-힣_]/g, "_")}.gpx`;
+      setSelectedSegId(newFileName);
+      setIsRegistering(false); // Redirect to leaderboard
     }
   };
 
@@ -322,6 +324,7 @@ export default function App() {
     }
   };
 
+  // Rename segment wrapper
   const handleSegmentRename = async (id: string, currentName: string) => {
     const newName = window.prompt("Enter new segment name:", currentName);
     if (newName && newName.trim() && newName.trim() !== currentName) {
@@ -336,6 +339,7 @@ export default function App() {
     }
   };
 
+  // Load selected segment to GPX editor to view its track on the map/chart
   const handleLoadSegmentToEditor = async (id: string, name: string) => {
     const gpxXml = await downloadGPXFile(id);
     if (!gpxXml) {
@@ -355,8 +359,7 @@ export default function App() {
       setDetectedClimbs([]);
       setSelectedClimbIdx(-1);
       setCheckedClimbs({});
-      setActiveTab("register");
-      alert(`🎉 Loaded "${name}" in the Route Register! You can now view and edit its range.`);
+      setIsRegistering(true); // Open Editor View!
     } catch (err) {
       alert("Failed to parse downloaded GPX.");
     }
@@ -376,24 +379,32 @@ export default function App() {
       <header className="app-header">
         <div className="header-logo">
           <span className="logo-icon">🏆</span>
-          <h1>Leaderboard Segment Manager</h1>
+          <h1>Leaderboard</h1>
         </div>
         
-        {/* Tab Navigation Menu */}
-        <nav className="header-nav">
-          <button
-            className={`nav-tab-btn ${activeTab === "register" ? "active" : ""}`}
-            onClick={() => setActiveTab("register")}
-          >
-            📂 Route Register (구간 등록)
-          </button>
-          <button
-            className={`nav-tab-btn ${activeTab === "ranking" ? "active" : ""}`}
-            onClick={() => setActiveTab("ranking")}
-          >
-            🥇 Leaderboard (랭킹 조회)
-          </button>
-        </nav>
+        {/* Registration Mode Indicator / Action Button in Header */}
+        <div className="header-navigation-actions">
+          {isRegistering ? (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => setIsRegistering(false)}
+            >
+              ← Back to Leaderboard (랭킹으로 돌아가기)
+            </button>
+          ) : (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                setGpxData(null);
+                setSegmentName("");
+                setDetectedClimbs([]);
+                setIsRegistering(true);
+              }}
+            >
+              ➕ Register New Segment (새 구간 등록)
+            </button>
+          )}
+        </div>
 
         <div className="header-actions">
           {accessToken ? (
@@ -449,8 +460,8 @@ export default function App() {
           </div>
         )}
 
-        {/* Tab 1: GPX Segment Parser & Register */}
-        {activeTab === "register" && (
+        {/* View A: GPX Segment Parser & Register (Hidden by default) */}
+        {isRegistering ? (
           <div className="main-grid">
             {/* Left Column: GPX Upload & Map */}
             <div className="grid-col left-col">
@@ -597,38 +608,34 @@ export default function App() {
                 </>
               ) : (
                 <div className="card welcome-card">
-                  <h3>Welcome to Segment Manager</h3>
+                  <h3>UploadGPX to Start Trimming</h3>
                   <p>
-                    To get started, upload a GPX ride track on the left panel. The app will automatically analyze
-                    the elevation data to suggest climbs, and allow you to trim it and upload directly to Google Drive.
+                    Drag & drop or select a GPX ride file in the left panel to open it in the editor.
                   </p>
-                  <div className="features-list">
-                    <div className="feature-item">
-                      <span>⛰️</span>
-                      <strong>Automatic Hill Extraction:</strong> Instantly finds climbs from Valley-to-Summit.
-                    </div>
-                    <div className="feature-item">
-                      <span>🔗</span>
-                      <strong>Downhill Merging:</strong> Merge multiple climbs including the valleys between them.
-                    </div>
-                    <div className="feature-item">
-                      <span>✂️</span>
-                      <strong>Precise Trimming:</strong> Adjust start/end markers on the interactive elevation profile.
-                    </div>
-                  </div>
                 </div>
               )}
             </div>
           </div>
-        )}
-
-        {/* Tab 2: Cloud Leaderboard / Rankings Viewer */}
-        {activeTab === "ranking" && (
+        ) : (
+          /* View B: Cloud Leaderboard / Rankings Viewer (Default Home) */
           <div className="main-grid">
             {/* Left Column: Registered Segments Catalog list */}
             <div className="grid-col left-col">
               <div className="card catalog-card">
-                <h3>Registered Segments ({catalog.segments.length})</h3>
+                <div className="catalog-header-row">
+                  <h3>Registered Segments ({catalog.segments.length})</h3>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => {
+                      setGpxData(null);
+                      setSegmentName("");
+                      setDetectedClimbs([]);
+                      setIsRegistering(true);
+                    }}
+                  >
+                    ➕ Register New (구간 등록)
+                  </button>
+                </div>
                 {catalog.segments.length > 0 ? (
                   <div className="catalog-vertical-list">
                     {catalog.segments.map((seg) => (
@@ -665,7 +672,7 @@ export default function App() {
                   </div>
                 ) : (
                   <div className="empty-catalog-message">
-                    No segments registered in Google Drive yet. Go to Route Register tab to create segments!
+                    No segments registered in Google Drive yet. Click "Register New" above to create segments!
                   </div>
                 )}
               </div>
