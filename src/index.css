@@ -1562,6 +1562,183 @@ body {
   color: #666669;
 }
 
+/* Directory Page Styles */
+.directory-container {
+  margin: 0 auto;
+  max-width: 960px;
+  padding: 20px 24px 60px 24px;
+}
+
+.directory-header-row {
+  margin-bottom: 24px;
+  border-bottom: 1px solid #1e1e20;
+  padding-bottom: 16px;
+}
+
+.directory-header-row h2 {
+  margin: 0 0 6px 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: #FFF;
+}
+
+.directory-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: #88888b;
+}
+
+/* Segment Grid & Card Styling */
+.segment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px;
+}
+
+.segment-card {
+  background-color: #121214;
+  border: 1px solid #2d2d35;
+  border-radius: 12px;
+  padding: 20px;
+  cursor: pointer;
+  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+  display: flex;
+  flex-direction: column;
+  min-height: 150px;
+  position: relative;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.segment-card:hover {
+  transform: translateY(-2px);
+  border-color: #FC6100;
+  box-shadow: 0 6px 20px rgba(252, 97, 0, 0.08);
+}
+
+.segment-card-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #FFF;
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 48px;
+}
+
+.segment-card-stats {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #88888b;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.segment-card-stats .divider {
+  color: #333;
+}
+
+.segment-card-footer {
+  margin-top: auto;
+  font-size: 11px;
+  color: #666669;
+  border-top: 1px solid #1a1a1c;
+  padding-top: 8px;
+}
+
+.segment-card-actions {
+  position: absolute;
+  top: 18px;
+  right: 14px;
+  display: flex;
+  gap: 4px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.segment-card:hover .segment-card-actions {
+  opacity: 1;
+}
+
+.btn-icon-only-small {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  font-size: 12px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon-only-small:hover {
+  background-color: #222224;
+}
+
+/* Leaderboard Page layout changes */
+.leaderboard-back-nav {
+  margin-bottom: 4px;
+}
+
+.leaderboard-seg-name {
+  font-size: 22px;
+  font-weight: 800;
+  color: #FFF;
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+
+/* Compact Add Attempt form header actions */
+.card-header-with-action {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.card-header-with-action h4 {
+  margin-bottom: 0 !important;
+}
+
+.manual-toggle-btn {
+  background-color: #1e1e20;
+  color: #bbb;
+}
+
+.manual-toggle-btn:hover {
+  background-color: #2a2a2d;
+  color: #fff;
+}
+
+.btn-xs {
+  padding: 4px 8px;
+  font-size: 10px;
+  border-radius: 4px;
+}
+
+.manual-record-collapsible {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #222;
+  background-color: #0b0b0c;
+  padding: 16px;
+  border-radius: 8px;
+  animation: slideDown 0.2s ease-out;
+}
+
+.manual-record-collapsible h5 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #FC6100;
+  font-weight: 800;
+}
+
+
 
 
 
