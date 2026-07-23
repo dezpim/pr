@@ -330,16 +330,6 @@ export function useGoogleDrive() {
       const updatedSegments = catalog.segments.filter((s) => s.id !== segmentId);
       const newCatalog: Catalog = { segments: updatedSegments };
 
-      // 3. Save new catalog.json
-      const catMetadata = {
-        name: "catalog.json",
-        parents: [folderId],
-      };
-      
-      const catFormData = new FormData();
-      catFormData.append("metadata", new Blob([JSON.stringify(catMetadata)], { type: "application/json" }));
-      catFormData.append("file", new Blob([JSON.stringify(newCatalog, null, 2)], { type: "application/json" }));
-
       // Find catalog.json file ID
       const catQuery = encodeURIComponent(`name = 'catalog.json' and '${folderId}' in parents and trashed = false`);
       const catCheck = await fetch(`https://www.googleapis.com/drive/v3/files?q=${catQuery}`, {
@@ -348,22 +338,39 @@ export function useGoogleDrive() {
       const catCheckData = await catCheck.json();
 
       let catUploadRes;
+      const catContentBlob = new Blob([JSON.stringify(newCatalog, null, 2)], { type: "application/json" });
+
       if (catCheckData.files && catCheckData.files.length > 0) {
+        // Update existing catalog: PATCH metadata must NOT include the "parents" field
         const catFileId = catCheckData.files[0].id;
+        const catUpdateMetadata = { name: "catalog.json" };
+        const catUpdateFormData = new FormData();
+        catUpdateFormData.append("metadata", new Blob([JSON.stringify(catUpdateMetadata)], { type: "application/json" }));
+        catUpdateFormData.append("file", catContentBlob);
+
         catUploadRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${catFileId}?uploadType=multipart`, {
           method: "PATCH",
           headers: { Authorization: `Bearer ${accessToken}` },
-          body: catFormData,
+          body: catUpdateFormData,
         });
       } else {
+        // Create new catalog: POST metadata includes name and parents
+        const catCreateMetadata = { name: "catalog.json", parents: [folderId] };
+        const catCreateFormData = new FormData();
+        catCreateFormData.append("metadata", new Blob([JSON.stringify(catCreateMetadata)], { type: "application/json" }));
+        catCreateFormData.append("file", catContentBlob);
+
         catUploadRes = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
           method: "POST",
           headers: { Authorization: `Bearer ${accessToken}` },
-          body: catFormData,
+          body: catCreateFormData,
         });
       }
 
-      if (!catUploadRes.ok) throw new Error("Catalog update failed during deletion");
+      if (!catUploadRes.ok) {
+        const errorText = await catUploadRes.text();
+        throw new Error(`Catalog update failed during deletion: ${catUploadRes.status} ${catUploadRes.statusText} - ${errorText}`);
+      }
 
       setCatalog(newCatalog);
       return true;
