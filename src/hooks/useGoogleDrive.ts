@@ -22,6 +22,9 @@ export interface CloudAttempt {
   date: string;
   durationMs: number;
   avgSpeed: number;
+  avgHr?: number;
+  avgPower?: number;
+  avgCadence?: number;
 }
 
 export interface CloudRankings {

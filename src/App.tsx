@@ -7,6 +7,7 @@ import { useGoogleDrive } from "./hooks/useGoogleDrive";
 import type { CatalogSegment, CloudAttempt } from "./hooks/useGoogleDrive";
 import { MapView } from "./components/MapView";
 import { ChartView } from "./components/ChartView";
+import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
 
 // Helper: Format milliseconds to MM:SS or HH:MM:SS
 function formatMsToTime(ms: number): string {
@@ -19,24 +20,6 @@ function formatMsToTime(ms: number): string {
     return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   }
   return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
-// Helper: Parse MM:SS or HH:MM:SS string to milliseconds
-function parseTimeToMs(timeStr: string): number {
-  const parts = timeStr.trim().split(":");
-  if (parts.length === 2) {
-    const m = parseInt(parts[0], 10);
-    const s = parseFloat(parts[1]);
-    if (isNaN(m) || isNaN(s)) return 0;
-    return (m * 60 + s) * 1000;
-  } else if (parts.length === 3) {
-    const h = parseInt(parts[0], 10);
-    const m = parseInt(parts[1], 10);
-    const s = parseFloat(parts[2]);
-    if (isNaN(h) || isNaN(m) || isNaN(s)) return 0;
-    return (h * 3600 + m * 60 + s) * 1000;
-  }
-  return 0;
 }
 
 // Helper: Get relative time string in Korean
@@ -69,6 +52,24 @@ function getRelativeTimeKo(dateStr: string): string {
   return `${years}년 전`;
 }
 
+// Helper: Parse MM:SS or HH:MM:SS string to milliseconds
+function parseTimeToMs(timeStr: string): number {
+  const parts = timeStr.trim().split(":");
+  if (parts.length === 2) {
+    const m = parseInt(parts[0], 10);
+    const s = parseFloat(parts[1]);
+    if (isNaN(m) || isNaN(s)) return 0;
+    return (m * 60 + s) * 1000;
+  } else if (parts.length === 3) {
+    const h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    const s = parseFloat(parts[2]);
+    if (isNaN(h) || isNaN(m) || isNaN(s)) return 0;
+    return (h * 3600 + m * 60 + s) * 1000;
+  }
+  return 0;
+}
+
 interface SplitDetail {
   splitNum: number;
   startDist: number;
@@ -81,7 +82,7 @@ interface SplitDetail {
   avgCadence?: number;
 }
 
-// Splits calculation algorithm
+// Splits calculation algorithm (removes fake/simulation sensor values)
 function calculateSplits(points: GPXPoint[], attempt: CloudAttempt, avgGradePercent: number): SplitDetail[] {
   if (points.length < 2) return [];
   
@@ -101,6 +102,11 @@ function calculateSplits(points: GPXPoint[], attempt: CloudAttempt, avgGradePerc
   
   const scaleFactor = attempt.durationMs / baseDurationMs;
   let currentPtIdx = 0;
+
+  // Determine if sensors are actually present in the GPX points
+  const hasHr = points.some(pt => pt.hr !== undefined && pt.hr > 0);
+  const hasPower = points.some(pt => pt.power !== undefined && pt.power > 0);
+  const hasCadence = points.some(pt => pt.cadence !== undefined && pt.cadence > 0);
   
   for (let i = 0; i < 10; i++) {
     const targetStartDist = i * splitDist;
@@ -143,20 +149,9 @@ function calculateSplits(points: GPXPoint[], attempt: CloudAttempt, avgGradePerc
         if (pt.cadence) { cadSum += pt.cadence; cadCount++; }
       });
       
-      const speedRatio = attempt.avgSpeed / 25;
-      const gradeFactor = Math.max(0, grade) * 10;
-      
-      const avgHr = hrCount > 0 
-        ? Math.round((hrSum / hrCount) * (attempt.avgSpeed / (totalDist / 1000 / (baseDurationMs / 3600000) || 1)))
-        : Math.round(130 + (speedRatio * 20) + (gradeFactor * 0.8));
-        
-      const avgPower = powerCount > 0
-        ? Math.round((powerSum / powerCount) * (attempt.avgSpeed / 25))
-        : Math.round(150 + (speedRatio * 50) + (gradeFactor * 5));
-        
-      const avgCadence = cadCount > 0
-        ? Math.round(cadSum / cadCount)
-        : Math.round(75 + (speedRatio * 10) - (gradeFactor * 0.3));
+      const avgHr = hasHr && hrCount > 0 ? Math.round(hrSum / hrCount) : undefined;
+      const avgPower = hasPower && powerCount > 0 ? Math.round(powerSum / powerCount) : undefined;
+      const avgCadence = hasCadence && cadCount > 0 ? Math.round(cadSum / cadCount) : undefined;
       
       splits.push({
         splitNum: i + 1,
@@ -165,9 +160,9 @@ function calculateSplits(points: GPXPoint[], attempt: CloudAttempt, avgGradePerc
         timeStr: formatMsToTime(durationMs),
         avgSpeed: speed,
         avgGrade: grade,
-        avgHr: Math.min(200, Math.max(80, avgHr)),
-        avgPower: Math.min(1000, Math.max(40, avgPower)),
-        avgCadence: Math.min(130, Math.max(40, avgCadence))
+        avgHr,
+        avgPower,
+        avgCadence
       });
     } else {
       splits.push({
@@ -177,16 +172,16 @@ function calculateSplits(points: GPXPoint[], attempt: CloudAttempt, avgGradePerc
         timeStr: formatMsToTime(attempt.durationMs / 10),
         avgSpeed: attempt.avgSpeed,
         avgGrade: avgGradePercent,
-        avgHr: 145,
-        avgPower: 210,
-        avgCadence: 82
+        avgHr: undefined,
+        avgPower: undefined,
+        avgCadence: undefined
       });
     }
   }
   return splits;
 }
 
-// GPX matching algorithm to extract segment attempt
+// GPX matching algorithm to extract segment attempt (with sensor data extraction)
 function extractAttemptFromRideGPX(ridePoints: GPXPoint[], segment: CatalogSegment): Omit<CloudAttempt, "id"> | null {
   if (ridePoints.length < 2) return null;
   
@@ -228,11 +223,31 @@ function extractAttemptFromRideGPX(ridePoints: GPXPoint[], segment: CatalogSegme
       if (durationMs > 0) {
         const avgSpeed = (segment.distanceMeters / 1000) / (durationMs / 3600000);
         const date = startPt.time.split("T")[0];
+        
+        // Extract average sensor values for the segment range
+        let hrSum = 0, hrCount = 0;
+        let powerSum = 0, powerCount = 0;
+        let cadSum = 0, cadCount = 0;
+        
+        for (let i = startIndex; i <= endIndex; i++) {
+          const pt = ridePoints[i];
+          if (pt.hr) { hrSum += pt.hr; hrCount++; }
+          if (pt.power) { powerSum += pt.power; powerCount++; }
+          if (pt.cadence) { cadSum += pt.cadence; cadCount++; }
+        }
+        
+        const avgHr = hrCount > 0 ? Math.round(hrSum / hrCount) : undefined;
+        const avgPower = powerCount > 0 ? Math.round(powerSum / powerCount) : undefined;
+        const avgCadence = cadCount > 0 ? Math.round(cadSum / cadCount) : undefined;
+
         return {
           riderName: "Me",
           date,
           durationMs,
-          avgSpeed: parseFloat(avgSpeed.toFixed(1))
+          avgSpeed: parseFloat(avgSpeed.toFixed(1)),
+          avgHr,
+          avgPower,
+          avgCadence,
         };
       }
     }
@@ -246,10 +261,8 @@ function renderClimbThumbnail(seg: CatalogSegment) {
   const heightFactor = Math.min(60, 20 + seg.elevationGainMeters / 10);
   const pathPoints: string[] = ["0,80"];
   
-  // Generate a smooth climb curve that correlates with the segment's gain and slope
   for (let i = 0; i <= pointsCount; i++) {
     const x = (i / pointsCount) * 260;
-    // Math wave curves to simulate hill profiles
     const progress = i / pointsCount;
     const wave = Math.sin(progress * Math.PI) * 8 * (seg.avgGradePercent > 4 ? 1.4 : 0.6);
     const slopeHeight = progress * heightFactor;
@@ -270,21 +283,52 @@ function renderClimbThumbnail(seg: CatalogSegment) {
           </linearGradient>
         </defs>
         
-        {/* Graticule guidelines */}
         <line x1="0" y1="20" x2="260" y2="20" stroke="#F3F3F7" strokeDasharray="3,3" />
         <line x1="0" y1="50" x2="260" y2="50" stroke="#F3F3F7" strokeDasharray="3,3" />
         <line x1="0" y1="80" x2="260" y2="80" stroke="#E6E6EB" strokeWidth="1.5" />
         
-        {/* Shaded Area */}
         <path d={pathD} fill={`url(#grad-${seg.id})`} />
-        
-        {/* Bold Line */}
         <path d={lineD} fill="none" stroke="#FC6100" strokeWidth="2.5" strokeLinecap="round" />
         
-        {/* Start / Finish Dots */}
         <circle cx="5" cy="78" r="4.5" fill="#4CAF50" stroke="#FFF" strokeWidth="1.5" />
         <circle cx="255" cy={80 - heightFactor} r="4.5" fill="#F44336" stroke="#FFF" strokeWidth="1.5" />
       </svg>
+    </div>
+  );
+}
+
+// Read-only elevation profile chart component for the detailed leaderboard page
+function ReadOnlyElevationChart({ points }: { points: GPXPoint[] }) {
+  if (points.length === 0) return <div className="splits-loading">고도 데이터를 불러오는 중...</div>;
+  const chartData = points.map((p) => ({
+    distanceKm: (p.distance / 1000).toFixed(2),
+    elevation: parseFloat(p.ele.toFixed(1)),
+  }));
+  const elevations = points.map((p) => p.ele);
+  const minElevation = Math.floor(Math.min(...elevations) - 5);
+  const maxElevation = Math.ceil(Math.max(...elevations) + 5);
+  
+  return (
+    <div className="read-only-elevation-chart" style={{ width: "100%", height: "140px", marginTop: "12px" }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
+          <XAxis dataKey="distanceKm" stroke="#8E8E93" fontSize={9} tickLine={false} unit=" km" />
+          <YAxis domain={[minElevation, maxElevation]} stroke="#8E8E93" fontSize={9} tickLine={false} unit=" m" />
+          <Tooltip
+            contentStyle={{ backgroundColor: "#FFFFFF", borderColor: "#E6E6EB", borderRadius: "6px" }}
+            labelStyle={{ color: "#242428", fontWeight: "bold" }}
+            formatter={(value: any) => [`${value} m`, "고도"]}
+            labelFormatter={(label) => `거리: ${label} km`}
+          />
+          <Area type="monotone" dataKey="elevation" stroke="#FC6100" fill="url(#colorEleDetails)" strokeWidth={1.5} />
+          <defs>
+            <linearGradient id="colorEleDetails" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#FC6100" stopOpacity={0.25} />
+              <stop offset="95%" stopColor="#FC6100" stopOpacity={0.0} />
+            </linearGradient>
+          </defs>
+        </AreaChart>
+      </ResponsiveContainer>
     </div>
   );
 }
@@ -318,6 +362,9 @@ export default function App() {
   const [selectedSegId, setSelectedSegId] = useState<string>("");
   const [activeSegmentPoints, setActiveSegmentPoints] = useState<GPXPoint[]>([]);
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
+
+  // Active hovered split segment tracker
+  const [hoveredSplitNum, setHoveredSplitNum] = useState<number | null>(null);
 
   // Toggle manual attempt input form
   const [showManualForm, setShowManualForm] = useState<boolean>(false);
@@ -535,7 +582,7 @@ export default function App() {
     }
   };
 
-  // Extract attempt record from uploaded ride GPX file
+  // Extract attempt record from uploaded ride GPX file (with actual sensor values)
   const handleRideGpxUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !activeSegment) return;
@@ -682,7 +729,6 @@ export default function App() {
     return sorted[0].date;
   };
 
-  // Get all segments in order of most recently challenged
   const getSortedCatalogSegments = (): CatalogSegment[] => {
     return [...catalog.segments].sort((a, b) => {
       const dateA = getSegmentLastRideDate(a.id);
@@ -694,6 +740,21 @@ export default function App() {
   };
 
   const sortedSegments = getSortedCatalogSegments();
+
+  // Determine if active segment points contain actual sensor data
+  const hasHr = activeSegmentPoints.some(pt => pt.hr !== undefined && pt.hr > 0);
+  const hasPower = activeSegmentPoints.some(pt => pt.power !== undefined && pt.power > 0);
+  const hasCadence = activeSegmentPoints.some(pt => pt.cadence !== undefined && pt.cadence > 0);
+
+  // Dynamic grid template columns for leaderboard rows based on sensor existence
+  let leaderboardGridStyle = "60px 40px 1fr 140px 50px"; // base
+  if (hasHr && hasPower) {
+    leaderboardGridStyle = "50px 40px 1fr 120px 80px 80px 50px";
+  } else if (hasHr) {
+    leaderboardGridStyle = "50px 40px 1fr 120px 90px 50px";
+  } else if (hasPower) {
+    leaderboardGridStyle = "50px 40px 1fr 120px 90px 50px";
+  }
 
   return (
     <div className="app-container">
@@ -906,7 +967,7 @@ export default function App() {
           </div>
         )}
 
-        {/* View B: Segment Directory Navigator (Default View showing up to 30 segments) */}
+        {/* View B: Segment Directory Navigator */}
         {activeView === "directory" && (
           <div className="directory-container">
             <div className="directory-header-row">
@@ -983,13 +1044,28 @@ export default function App() {
           </div>
         )}
 
-        {/* View C: Focused Leaderboard View for Selected Segment */}
+        {/* View C: Focused Leaderboard View for Selected Segment (With Map & Elevation profile) */}
         {activeView === "leaderboard" && activeSegment && (
           <div className="centered-dashboard">
             <div className="leaderboard-back-nav">
               <button className="btn btn-secondary btn-sm" onClick={() => setActiveView("directory")}>
                 ← 전체 구간 목록으로 돌아가기
               </button>
+            </div>
+
+            {/* Segment Map & Elevation Card (Just like Strava details view!) */}
+            <div className="card segment-media-card" style={{ padding: "16px", marginBottom: "10px" }}>
+              <div style={{ width: "100%", height: "300px", borderRadius: "8px", overflow: "hidden" }}>
+                <MapView
+                  points={activeSegmentPoints}
+                  startIndex={0}
+                  endIndex={activeSegmentPoints.length - 1}
+                  activeSplitNum={hoveredSplitNum}
+                />
+              </div>
+              
+              {/* Elevation Silhouette */}
+              <ReadOnlyElevationChart points={activeSegmentPoints} />
             </div>
 
             <div className="card leaderboard-card strava-theme">
@@ -1073,10 +1149,16 @@ export default function App() {
               {/* Custom ranking rows with inline splits details */}
               {leaderboard.length > 0 ? (
                 <div className="strava-leaderboard-list">
-                  <div className="leaderboard-list-header">
+                  <div
+                    className="leaderboard-list-header"
+                    style={{ display: "grid", gridTemplateColumns: leaderboardGridStyle }}
+                  >
                     <span>순위</span>
                     <span>주행 일자</span>
-                    <span>기록 / 평균 시속</span>
+                    <span>시간 / 평균 시속</span>
+                    {hasHr && <span>심박 (HR)</span>}
+                    {hasPower && <span>파워 (Power)</span>}
+                    <span style={{ textAlign: "center" }}>삭제</span>
                   </div>
 
                   {leaderboard.map((att, idx) => {
@@ -1086,6 +1168,7 @@ export default function App() {
                       <React.Fragment key={att.id}>
                         <div
                           className={`leaderboard-row-item clickable ${isExpanded ? "expanded" : ""}`}
+                          style={{ display: "grid", gridTemplateColumns: leaderboardGridStyle }}
                           onClick={() => setSelectedAttemptId(isExpanded ? null : att.id)}
                         >
                           <div className="row-rank">
@@ -1114,6 +1197,19 @@ export default function App() {
                             <span className="attempt-speed">{att.avgSpeed.toFixed(1)} km/h</span>
                           </div>
 
+                          {/* Render sensor values only if they exist in the segment points */}
+                          {hasHr && (
+                            <span className="sensor-hr" style={{ textAlign: "center", fontSize: "13px" }}>
+                              {att.avgHr ? `${att.avgHr} bpm` : "—"}
+                            </span>
+                          )}
+                          
+                          {hasPower && (
+                            <span className="sensor-power" style={{ textAlign: "center", fontSize: "13px" }}>
+                              {att.avgPower ? `${att.avgPower} W` : "—"}
+                            </span>
+                          )}
+
                           <div className="row-actions" onClick={(e) => e.stopPropagation()}>
                             <button
                               className="btn-delete-attempt"
@@ -1139,14 +1235,22 @@ export default function App() {
                                       <th>시간</th>
                                       <th>평균 시속</th>
                                       <th>경사도</th>
-                                      <th>❤️ 심박</th>
-                                      <th>⚡ 파워</th>
-                                      <th>🔄 케이던스</th>
+                                      {hasHr && <th>❤️ 심박</th>}
+                                      {hasPower && <th>⚡ 파워</th>}
+                                      {hasCadence && <th>🔄 케이던스</th>}
                                     </tr>
                                   </thead>
                                   <tbody>
                                     {splits.map((split) => (
-                                      <tr key={split.splitNum}>
+                                      <tr
+                                        key={split.splitNum}
+                                        onMouseEnter={() => setHoveredSplitNum(split.splitNum)}
+                                        onMouseLeave={() => setHoveredSplitNum(null)}
+                                        style={{
+                                          backgroundColor: hoveredSplitNum === split.splitNum ? "rgba(252, 97, 0, 0.05)" : "transparent",
+                                          cursor: "crosshair",
+                                        }}
+                                      >
                                         <td className="split-num-td">{split.splitNum}</td>
                                         <td className="split-interval-td">
                                           {(split.startDist / 1000).toFixed(2)} - {(split.endDist / 1000).toFixed(2)} km
@@ -1160,9 +1264,21 @@ export default function App() {
                                         >
                                           {split.avgGrade.toFixed(1)}%
                                         </td>
-                                        <td className="sensor-hr">{split.avgHr} bpm</td>
-                                        <td className="sensor-power">{split.avgPower} W</td>
-                                        <td className="sensor-cadence">{split.avgCadence} rpm</td>
+                                        {hasHr && (
+                                          <td className="sensor-hr">
+                                            {split.avgHr !== undefined ? `${split.avgHr} bpm` : "—"}
+                                          </td>
+                                        )}
+                                        {hasPower && (
+                                          <td className="sensor-power">
+                                            {split.avgPower !== undefined ? `${split.avgPower} W` : "—"}
+                                          </td>
+                                        )}
+                                        {hasCadence && (
+                                          <td className="sensor-cadence">
+                                            {split.avgCadence !== undefined ? `${split.avgCadence} rpm` : "—"}
+                                          </td>
+                                        )}
                                       </tr>
                                     ))}
                                   </tbody>
