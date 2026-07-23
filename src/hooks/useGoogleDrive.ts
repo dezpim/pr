@@ -680,6 +680,54 @@ export function useGoogleDrive() {
     }
   };
 
+  // Clean up all unregistered GPX files in the folder (not listed in catalog.json)
+  const cleanOrphanedFiles = async (): Promise<number> => {
+    if (!accessToken) return 0;
+    setLoading(true);
+    try {
+      const folderId = await findOrCreateFolder(accessToken);
+      if (!folderId) throw new Error("Could not find app folder");
+
+      // 1. Fetch all GPX files in the folder
+      const query = encodeURIComponent(`'${folderId}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`);
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&spaces=drive&fields=files(id, name)`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      checkResponse(res, "Failed to list folder files");
+      const listData = await res.json();
+      const driveFiles = listData.files || [];
+
+      // 2. Collect segment IDs from catalog
+      const activeIds = new Set(catalog.segments.map((s) => s.id));
+
+      // 3. Find files to delete
+      const filesToDelete = driveFiles.filter((file: any) => {
+        const name = file.name;
+        if (name === "catalog.json" || name === "rankings.json") return false;
+        return !activeIds.has(name);
+      });
+
+      // 4. Delete orphaned files
+      let deleteCount = 0;
+      for (const file of filesToDelete) {
+        const delRes = await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (delRes.ok || delRes.status === 404) {
+          deleteCount++;
+        }
+      }
+
+      return deleteCount;
+    } catch (e: any) {
+      alert("정리 중 오류 발생: " + e.message);
+      return 0;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     accessToken,
     clientId,
@@ -697,5 +745,6 @@ export function useGoogleDrive() {
     addAttemptToCloud,
     deleteAttemptFromCloud,
     refreshCatalog: loadCatalog,
+    cleanOrphanedFiles,
   };
 }

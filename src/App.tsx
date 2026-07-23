@@ -426,6 +426,7 @@ export default function App() {
     downloadGPXFile,
     addAttemptToCloud,
     deleteAttemptFromCloud,
+    cleanOrphanedFiles,
   } = useGoogleDrive();
 
   // Navigation views: 'directory' | 'leaderboard' | 'editor'
@@ -759,6 +760,14 @@ export default function App() {
     }
   };
 
+  const handleCleanOrphanedFiles = async () => {
+    if (!window.confirm("catalog.json에 등록되어 있지 않은 모든 고아 GPX 파일들을 구글 드라이브에서 삭제하시겠습니까?")) {
+      return;
+    }
+    const count = await cleanOrphanedFiles();
+    alert(`🎉 정리 완료! catalog.json에 등록되지 않은 고아 GPX 파일 ${count}개를 찾아 안전하게 삭제했습니다.`);
+  };
+
   const handleSegmentDelete = async (id: string, name: string) => {
     if (window.confirm(`구간 "${name}"을 삭제하시겠습니까? 관련 주행 기록도 함께 삭제됩니다.`)) {
       const success = await deleteSegment(id);
@@ -916,6 +925,20 @@ export default function App() {
                   value={tempClientId}
                   onChange={(e) => setTempClientId(e.target.value)}
                 />
+              </div>
+              <div className="form-group" style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px solid #E6E6EB" }}>
+                <label>저장소 및 파일 관리</label>
+                <button
+                  className="btn btn-secondary btn-block"
+                  style={{ backgroundColor: "#F3F3F7", color: "#E34F00", border: "1px solid #FC6100", fontWeight: "bold" }}
+                  onClick={handleCleanOrphanedFiles}
+                  disabled={loading}
+                >
+                  {loading ? "정리 중..." : "🧹 미등록 쓰레기 GPX 파일 정리"}
+                </button>
+                <p style={{ fontSize: "11px", color: "#8E8E93", marginTop: "6px", lineHeight: "1.4" }}>
+                  현재 리더보드 구간 목록(catalog.json)에 등록되어 있지 않으면서 구글 드라이브 폴더에 남겨진 쓰레기 GPX 파일들을 자동 감지하여 완전 제거합니다.
+                </p>
               </div>
               <div className="settings-buttons">
                 <button className="btn btn-primary" onClick={handleSaveSettings}>
