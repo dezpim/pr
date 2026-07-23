@@ -255,43 +255,95 @@ function extractAttemptFromRideGPX(ridePoints: GPXPoint[], segment: CatalogSegme
   return null;
 }
 
-// Dynamic SVG Climb Silhouette Thumbnail Generator
-function renderClimbThumbnail(seg: CatalogSegment) {
-  const pointsCount = 10;
-  const heightFactor = Math.min(60, 20 + seg.elevationGainMeters / 10);
-  const pathPoints: string[] = ["0,80"];
+// Generates a scaled, aspect-ratio-preserved SVG path representing the 2D segment route
+function generateRouteSvgPath(points: GPXPoint[]): string {
+  if (points.length < 2) return "";
   
-  for (let i = 0; i <= pointsCount; i++) {
-    const x = (i / pointsCount) * 260;
-    const progress = i / pointsCount;
-    const wave = Math.sin(progress * Math.PI) * 8 * (seg.avgGradePercent > 4 ? 1.4 : 0.6);
-    const slopeHeight = progress * heightFactor;
-    const y = 80 - slopeHeight - wave;
-    pathPoints.push(`${x},${y}`);
+  let minLat = Infinity, maxLat = -Infinity;
+  let minLon = Infinity, maxLon = -Infinity;
+  
+  points.forEach((p) => {
+    if (p.lat < minLat) minLat = p.lat;
+    if (p.lat > maxLat) maxLat = p.lat;
+    if (p.lon < minLon) minLon = p.lon;
+    if (p.lon > maxLon) maxLon = p.lon;
+  });
+  
+  const latDiff = maxLat - minLat;
+  const lonDiff = maxLon - minLon;
+  
+  const width = 240; // 10px padding on each side (260 - 20)
+  const height = 65; // 10px padding on each side (85 - 20)
+  
+  let scaleX = 1;
+  let scaleY = 1;
+  
+  if (lonDiff > 0) scaleX = width / lonDiff;
+  if (latDiff > 0) scaleY = height / latDiff;
+  
+  const scale = Math.min(scaleX, scaleY);
+  
+  const routeWidth = lonDiff * scale;
+  const routeHeight = latDiff * scale;
+  const offsetX = 10 + (width - routeWidth) / 2;
+  const offsetY = 10 + (height - routeHeight) / 2;
+  
+  const svgPoints = points.map((p) => {
+    const x = offsetX + (p.lon - minLon) * scale;
+    const y = offsetY + (maxLat - p.lat) * scale; // Invert latitude for SVG
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  
+  return `M ${svgPoints.join(" L ")}`;
+}
+
+// Dynamic SVG 2D Route Map Thumbnail Renderer
+function renderRouteThumbnail(pathD?: string) {
+  if (!pathD) {
+    return (
+      <div className="segment-card-thumbnail">
+        <span className="splits-loading" style={{ color: "#8E8E93" }}>지도 썸네일 생성 중...</span>
+      </div>
+    );
   }
-  pathPoints.push("260,80");
-  const pathD = `M ${pathPoints.join(" L ")} Z`;
-  const lineD = pathPoints.slice(0, pathPoints.length - 1).map((pt, idx) => (idx === 0 ? `M ${pt}` : `L ${pt}`)).join(" ");
+
+  let startX = 130, startY = 42;
+  let endX = 130, endY = 42;
+  
+  try {
+    const coordsStr = pathD.replace("M ", "").split(" L ");
+    if (coordsStr.length >= 2) {
+      const startParts = coordsStr[0].split(",");
+      const endParts = coordsStr[coordsStr.length - 1].split(",");
+      startX = parseFloat(startParts[0]);
+      startY = parseFloat(startParts[1]);
+      endX = parseFloat(endParts[0]);
+      endY = parseFloat(endParts[1]);
+    }
+  } catch (e) {
+    // Ignored
+  }
 
   return (
-    <div className="segment-card-thumbnail">
+    <div className="segment-card-thumbnail" style={{ backgroundColor: "#FAFAFC" }}>
       <svg viewBox="0 0 260 85" width="100%" height="85">
-        <defs>
-          <linearGradient id={`grad-${seg.id}`} x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="rgba(252, 97, 0, 0.35)" />
-            <stop offset="100%" stopColor="rgba(252, 97, 0, 0.0)" />
-          </linearGradient>
-        </defs>
-        
+        {/* Soft layout guidelines */}
         <line x1="0" y1="20" x2="260" y2="20" stroke="#F3F3F7" strokeDasharray="3,3" />
         <line x1="0" y1="50" x2="260" y2="50" stroke="#F3F3F7" strokeDasharray="3,3" />
-        <line x1="0" y1="80" x2="260" y2="80" stroke="#E6E6EB" strokeWidth="1.5" />
         
-        <path d={pathD} fill={`url(#grad-${seg.id})`} />
-        <path d={lineD} fill="none" stroke="#FC6100" strokeWidth="2.5" strokeLinecap="round" />
+        {/* Route outline line */}
+        <path
+          d={pathD}
+          fill="none"
+          stroke="#FC6100"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
         
-        <circle cx="5" cy="78" r="4.5" fill="#4CAF50" stroke="#FFF" strokeWidth="1.5" />
-        <circle cx="255" cy={80 - heightFactor} r="4.5" fill="#F44336" stroke="#FFF" strokeWidth="1.5" />
+        {/* Start (Green) & End (Red) Dot Markers */}
+        <circle cx={startX} cy={startY} r="5" fill="#4CAF50" stroke="#FFFFFF" strokeWidth="1.5" />
+        <circle cx={endX} cy={endY} r="5" fill="#F44336" stroke="#FFFFFF" strokeWidth="1.5" />
       </svg>
     </div>
   );
@@ -402,6 +454,31 @@ export default function App() {
   const [climbNames, setClimbNames] = useState<{ [key: number]: string }>({});
   const [selectedClimbIdx, setSelectedClimbIdx] = useState<number>(-1);
   const [checkedClimbs, setCheckedClimbs] = useState<{ [key: number]: boolean }>({});
+
+  // Local cache for dynamically parsed legacy route paths
+  const [legacyPaths, setLegacyPaths] = useState<{ [id: string]: string }>({});
+
+  // Pre-render/fetch missing route SVG paths for legacy segments
+  useEffect(() => {
+    if (!accessToken) return;
+    catalog.segments.forEach((seg) => {
+      if (!seg.routeSvgPath && !legacyPaths[seg.id]) {
+        const fetchLegacyPath = async () => {
+          const xml = await downloadGPXFile(seg.id);
+          if (xml) {
+            try {
+              const parsed = parseGPX(xml);
+              const path = generateRouteSvgPath(parsed.points);
+              setLegacyPaths((prev) => ({ ...prev, [seg.id]: path }));
+            } catch (e) {
+              // Ignored
+            }
+          }
+        };
+        fetchLegacyPath();
+      }
+    });
+  }, [catalog.segments, accessToken, legacyPaths]);
 
   // Manual ride record input states
   const [manualDate, setManualDate] = useState<string>(new Date().toISOString().split("T")[0]);
@@ -562,6 +639,7 @@ export default function App() {
     const startPt = trimmedPoints[0];
     const endPt = trimmedPoints[trimmedPoints.length - 1];
     const stats = calculateStatsForRange(climb.startIndex, climb.endIndex);
+    const routeSvgPath = generateRouteSvgPath(trimmedPoints);
 
     const success = await saveSegment(name, gpxXml, {
       distanceMeters: parseFloat(stats.dist.toFixed(1)),
@@ -569,6 +647,7 @@ export default function App() {
       avgGradePercent: parseFloat(stats.grade.toFixed(1)),
       startCoords: [startPt.lat, startPt.lon],
       endCoords: [endPt.lat, endPt.lon],
+      routeSvgPath,
     });
 
     if (success) {
@@ -590,6 +669,7 @@ export default function App() {
     const gpxXml = generateGPX(segmentName, trimmedPoints);
     const startPt = trimmedPoints[0];
     const endPt = trimmedPoints[trimmedPoints.length - 1];
+    const routeSvgPath = generateRouteSvgPath(trimmedPoints);
 
     const success = await saveSegment(segmentName, gpxXml, {
       distanceMeters: parseFloat(distance.toFixed(1)),
@@ -597,6 +677,7 @@ export default function App() {
       avgGradePercent: parseFloat(grade.toFixed(1)),
       startCoords: [startPt.lat, startPt.lon],
       endCoords: [endPt.lat, endPt.lon],
+      routeSvgPath,
     });
 
     if (success) {
@@ -1012,8 +1093,8 @@ export default function App() {
                         setActiveView("leaderboard");
                       }}
                     >
-                      {/* Segment Thumbnail Outline (Dynamic SVG Climb Silhouette) */}
-                      {renderClimbThumbnail(seg)}
+                      {/* Segment Thumbnail Outline (Pre-rendered 2D Route Map) */}
+                      {renderRouteThumbnail(seg.routeSvgPath || legacyPaths[seg.id])}
 
                       <div className="segment-card-body">
                         <div className="segment-card-title" title={seg.name}>

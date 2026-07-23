@@ -10,6 +10,7 @@ export interface CatalogSegment {
   avgGradePercent: number;
   startCoords: [number, number];
   endCoords: [number, number];
+  routeSvgPath?: string;
 }
 
 export interface Catalog {
