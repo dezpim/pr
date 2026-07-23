@@ -7,7 +7,7 @@ import { useGoogleDrive } from "./hooks/useGoogleDrive";
 import type { CatalogSegment, CloudAttempt } from "./hooks/useGoogleDrive";
 import { MapView } from "./components/MapView";
 import { ChartView } from "./components/ChartView";
-import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceArea } from "recharts";
 
 // Helper: Format milliseconds to MM:SS or HH:MM:SS
 function formatMsToTime(ms: number): string {
@@ -298,7 +298,7 @@ function renderClimbThumbnail(seg: CatalogSegment) {
 }
 
 // Read-only elevation profile chart component for the detailed leaderboard page
-function ReadOnlyElevationChart({ points }: { points: GPXPoint[] }) {
+function ReadOnlyElevationChart({ points, activeSplitNum }: { points: GPXPoint[]; activeSplitNum?: number | null }) {
   if (points.length === 0) return <div className="splits-loading">고도 데이터를 불러오는 중...</div>;
   const chartData = points.map((p) => ({
     distanceKm: (p.distance / 1000).toFixed(2),
@@ -307,6 +307,19 @@ function ReadOnlyElevationChart({ points }: { points: GPXPoint[] }) {
   const elevations = points.map((p) => p.ele);
   const minElevation = Math.floor(Math.min(...elevations) - 5);
   const maxElevation = Math.ceil(Math.max(...elevations) + 5);
+
+  // Calculate start/end distance for active split highlight box
+  let highlightX1: string | undefined = undefined;
+  let highlightX2: string | undefined = undefined;
+
+  if (activeSplitNum && points.length >= 2) {
+    const totalDist = points[points.length - 1].distance - points[0].distance;
+    const splitDist = totalDist / 10;
+    const startMeters = (activeSplitNum - 1) * splitDist;
+    const endMeters = activeSplitNum * splitDist;
+    highlightX1 = (startMeters / 1000).toFixed(2);
+    highlightX2 = (endMeters / 1000).toFixed(2);
+  }
   
   return (
     <div className="read-only-elevation-chart" style={{ width: "100%", height: "140px", marginTop: "12px" }}>
@@ -321,6 +334,17 @@ function ReadOnlyElevationChart({ points }: { points: GPXPoint[] }) {
             labelFormatter={(label) => `거리: ${label} km`}
           />
           <Area type="monotone" dataKey="elevation" stroke="#FC6100" fill="url(#colorEleDetails)" strokeWidth={1.5} />
+          
+          {/* Shaded highlight area for active split */}
+          {highlightX1 !== undefined && highlightX2 !== undefined && (
+            <ReferenceArea
+              x1={highlightX1}
+              x2={highlightX2}
+              fill="#FC6100"
+              fillOpacity={0.2}
+            />
+          )}
+
           <defs>
             <linearGradient id="colorEleDetails" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#FC6100" stopOpacity={0.25} />
@@ -1065,7 +1089,7 @@ export default function App() {
               </div>
               
               {/* Elevation Silhouette */}
-              <ReadOnlyElevationChart points={activeSegmentPoints} />
+              <ReadOnlyElevationChart points={activeSegmentPoints} activeSplitNum={hoveredSplitNum} />
             </div>
 
             <div className="card leaderboard-card strava-theme">
