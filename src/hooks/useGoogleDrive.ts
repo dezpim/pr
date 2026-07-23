@@ -111,6 +111,21 @@ export function useGoogleDrive() {
     }
   };
 
+  // Helper: check response and handle expired session (401)
+  const checkResponse = useCallback((res: Response, contextMsg: string) => {
+    if (res.status === 401) {
+      setAccessToken(null);
+      setUserEmail(null);
+      localStorage.removeItem("gdrive_access_token");
+      localStorage.removeItem("gdrive_user_email");
+      throw new Error("Session expired. Please sign in with Google again.");
+    }
+    if (!res.ok) {
+      throw new Error(`${contextMsg} (HTTP ${res.status})`);
+    }
+    return res;
+  }, []);
+
   // Helper: Find or create Leaderboard_Segments folder
   const findOrCreateFolder = async (token: string): Promise<string | null> => {
     try {
@@ -120,7 +135,7 @@ export function useGoogleDrive() {
         headers: { Authorization: `Bearer ${token}` },
       });
       
-      if (!res.ok) return null;
+      checkResponse(res, "Failed to search Leaderboard_Segments folder");
       const data = await res.json();
       
       if (data.files && data.files.length > 0) {
@@ -140,10 +155,13 @@ export function useGoogleDrive() {
         }),
       });
 
-      if (!createRes.ok) return null;
+      checkResponse(createRes, "Failed to create Leaderboard_Segments folder");
       const folderData = await createRes.json();
       return folderData.id;
-    } catch (e) {
+    } catch (e: any) {
+      if (e.message?.includes("Session expired")) {
+        throw e;
+      }
       return null;
     }
   };
@@ -162,20 +180,18 @@ export function useGoogleDrive() {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
-      if (res.ok) {
-        const listData = await res.json();
-        if (listData.files && listData.files.length > 0) {
-          const fileId = listData.files[0].id;
-          const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          });
-          if (fileRes.ok) {
-            const cat = await fileRes.ok ? await fileRes.json() : { segments: [] };
-            setCatalog(cat);
-          }
-        } else {
-          setCatalog({ segments: [] });
-        }
+      checkResponse(res, "Failed to load catalog files list");
+      const listData = await res.json();
+      if (listData.files && listData.files.length > 0) {
+        const fileId = listData.files[0].id;
+        const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        checkResponse(fileRes, "Failed to download catalog.json");
+        const cat = await fileRes.json();
+        setCatalog(cat);
+      } else {
+        setCatalog({ segments: [] });
       }
 
       // 2. Search and load rankings.json
@@ -184,23 +200,23 @@ export function useGoogleDrive() {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
-      if (rankRes.ok) {
-        const rankListData = await rankRes.json();
-        if (rankListData.files && rankListData.files.length > 0) {
-          const fileId = rankListData.files[0].id;
-          const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          });
-          if (fileRes.ok) {
-            const ranks = await fileRes.json();
-            setRankings(ranks);
-          }
-        } else {
-          setRankings({});
-        }
+      checkResponse(rankRes, "Failed to load rankings files list");
+      const rankListData = await rankRes.json();
+      if (rankListData.files && rankListData.files.length > 0) {
+        const fileId = rankListData.files[0].id;
+        const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        checkResponse(fileRes, "Failed to download rankings.json");
+        const ranks = await fileRes.json();
+        setRankings(ranks);
+      } else {
+        setRankings({});
       }
-    } catch (e) {
-      // Ignored or reset
+    } catch (e: any) {
+      if (e.message?.includes("Session expired")) {
+        alert(e.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -219,7 +235,7 @@ export function useGoogleDrive() {
     setLoading(true);
     try {
       const folderId = await findOrCreateFolder(accessToken);
-      if (!folderId) throw new Error("Could not find/create app folder");
+      if (!folderId) throw new Error("Could not find/create Leaderboard_Segments folder");
 
       const fileName = `${name.replace(/[^a-zA-Z0-9가-힣_]/g, "_")}.gpx`;
       const fileContentBlob = new Blob([gpxContent], { type: "application/gpx+xml" });
@@ -229,6 +245,7 @@ export function useGoogleDrive() {
       const checkRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
+      checkResponse(checkRes, "Failed to check existing GPX file");
       const checkData = await checkRes.json();
 
       let uploadRes;
@@ -259,10 +276,7 @@ export function useGoogleDrive() {
         });
       }
 
-      if (!uploadRes.ok) {
-        const errorText = await uploadRes.text();
-        throw new Error(`GPX upload failed: ${uploadRes.status} ${uploadRes.statusText} - ${errorText}`);
-      }
+      checkResponse(uploadRes, "GPX upload failed");
 
       // Update Catalog
       const newSegment: CatalogSegment = {
@@ -280,6 +294,7 @@ export function useGoogleDrive() {
       const catCheck = await fetch(`https://www.googleapis.com/drive/v3/files?q=${catQuery}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
+      checkResponse(catCheck, "Failed to check existing catalog.json");
       const catCheckData = await catCheck.json();
 
       let catUploadRes;
@@ -312,10 +327,7 @@ export function useGoogleDrive() {
         });
       }
 
-      if (!catUploadRes.ok) {
-        const errorText = await catUploadRes.text();
-        throw new Error(`Catalog update failed: ${catUploadRes.status} ${catUploadRes.statusText} - ${errorText}`);
-      }
+      checkResponse(catUploadRes, "Catalog update failed");
 
       setCatalog(newCatalog);
       return true;
