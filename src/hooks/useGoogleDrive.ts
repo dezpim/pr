@@ -222,6 +222,60 @@ export function useGoogleDrive() {
     }
   }, [accessToken]);
 
+  // Save rankings.json file to Google Drive
+  const saveRankingsToDrive = async (updatedRankings: CloudRankings): Promise<boolean> => {
+    if (!accessToken) return false;
+    setLoading(true);
+    try {
+      const folderId = await findOrCreateFolder(accessToken);
+      if (!folderId) throw new Error("Could not find Leaderboard_Segments folder");
+
+      const rankQuery = encodeURIComponent(`name = 'rankings.json' and '${folderId}' in parents and trashed = false`);
+      const rankCheck = await fetch(`https://www.googleapis.com/drive/v3/files?q=${rankQuery}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const rankCheckData = await rankCheck.json();
+
+      let rankUploadRes;
+      const rankContentBlob = new Blob([JSON.stringify(updatedRankings, null, 2)], { type: "application/json" });
+
+      if (rankCheckData.files && rankCheckData.files.length > 0) {
+        const fileId = rankCheckData.files[0].id;
+        const rankUpdateMetadata = { name: "rankings.json" };
+        const rankUpdateFormData = new FormData();
+        rankUpdateFormData.append("metadata", new Blob([JSON.stringify(rankUpdateMetadata)], { type: "application/json" }));
+        rankUpdateFormData.append("file", rankContentBlob);
+
+        rankUploadRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${accessToken}` },
+          body: rankUpdateFormData,
+        });
+      } else {
+        const rankCreateMetadata = { name: "rankings.json", parents: [folderId] };
+        const rankCreateFormData = new FormData();
+        rankCreateFormData.append("metadata", new Blob([JSON.stringify(rankCreateMetadata)], { type: "application/json" }));
+        rankCreateFormData.append("file", rankContentBlob);
+
+        rankUploadRes = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}` },
+          body: rankCreateFormData,
+        });
+      }
+
+      checkResponse(rankUploadRes, "Rankings update failed");
+
+      setRankings(updatedRankings);
+      return true;
+    } catch (e: any) {
+      alert("Error saving rankings: " + e.message);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Upload new segment and update catalog
   const saveSegment = async (
     name: string,
@@ -329,67 +383,51 @@ export function useGoogleDrive() {
 
       checkResponse(catUploadRes, "Catalog update failed");
 
+      // Check if there are time tags in the GPX to auto-register first attempt
+      const gpxParser = new DOMParser();
+      const xmlDoc = gpxParser.parseFromString(gpxContent, "text/xml");
+      const trkpts = xmlDoc.querySelectorAll("trkpt");
+      if (trkpts.length >= 2) {
+        const firstTime = trkpts[0].querySelector("time")?.textContent;
+        const lastTime = trkpts[trkpts.length - 1].querySelector("time")?.textContent;
+        if (firstTime && lastTime) {
+          const startMs = new Date(firstTime).getTime();
+          const endMs = new Date(lastTime).getTime();
+          const durationMs = endMs - startMs;
+          if (durationMs > 0) {
+            const attemptDate = firstTime.split("T")[0];
+            // Calculate avg speed: dist / time
+            const distMeters = meta.distanceMeters;
+            const avgSpeed = (distMeters / 1000) / (durationMs / 3600000);
+            
+            // Add to rankings
+            const attemptId = "att_" + Date.now();
+            const newAttempt: CloudAttempt = {
+              id: attemptId,
+              riderName: "Me",
+              date: attemptDate,
+              durationMs,
+              avgSpeed: parseFloat(avgSpeed.toFixed(1)),
+            };
+            
+            let currentRankings = { ...rankings };
+            if (!currentRankings[fileName]) {
+              currentRankings[fileName] = [];
+            }
+            // Avoid duplicates
+            const isDup = currentRankings[fileName].some(r => r.date === attemptDate && r.durationMs === durationMs);
+            if (!isDup) {
+              currentRankings[fileName].push(newAttempt);
+              await saveRankingsToDrive(currentRankings);
+            }
+          }
+        }
+      }
+
       setCatalog(newCatalog);
       return true;
     } catch (e: any) {
       alert("Error saving: " + e.message);
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Save rankings.json file to Google Drive
-  const saveRankingsToDrive = async (updatedRankings: CloudRankings): Promise<boolean> => {
-    if (!accessToken) return false;
-    setLoading(true);
-    try {
-      const folderId = await findOrCreateFolder(accessToken);
-      if (!folderId) throw new Error("Could not find app folder");
-
-      const rankQuery = encodeURIComponent(`name = 'rankings.json' and '${folderId}' in parents and trashed = false`);
-      const rankCheck = await fetch(`https://www.googleapis.com/drive/v3/files?q=${rankQuery}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      const rankCheckData = await rankCheck.json();
-
-      let rankUploadRes;
-      const rankContentBlob = new Blob([JSON.stringify(updatedRankings, null, 2)], { type: "application/json" });
-
-      if (rankCheckData.files && rankCheckData.files.length > 0) {
-        const fileId = rankCheckData.files[0].id;
-        const rankUpdateMetadata = { name: "rankings.json" };
-        const rankUpdateFormData = new FormData();
-        rankUpdateFormData.append("metadata", new Blob([JSON.stringify(rankUpdateMetadata)], { type: "application/json" }));
-        rankUpdateFormData.append("file", rankContentBlob);
-
-        rankUploadRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`, {
-          method: "PATCH",
-          headers: { Authorization: `Bearer ${accessToken}` },
-          body: rankUpdateFormData,
-        });
-      } else {
-        const rankCreateMetadata = { name: "rankings.json", parents: [folderId] };
-        const rankCreateFormData = new FormData();
-        rankCreateFormData.append("metadata", new Blob([JSON.stringify(rankCreateMetadata)], { type: "application/json" }));
-        rankCreateFormData.append("file", rankContentBlob);
-
-        rankUploadRes = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${accessToken}` },
-          body: rankCreateFormData,
-        });
-      }
-
-      if (!rankUploadRes.ok) {
-        const errorText = await rankUploadRes.text();
-        throw new Error(`Rankings update failed: ${rankUploadRes.status} ${rankUploadRes.statusText} - ${errorText}`);
-      }
-
-      setRankings(updatedRankings);
-      return true;
-    } catch (e: any) {
-      alert("Error saving rankings: " + e.message);
       return false;
     } finally {
       setLoading(false);
