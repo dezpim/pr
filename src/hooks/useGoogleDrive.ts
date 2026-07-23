@@ -222,6 +222,13 @@ export function useGoogleDrive() {
     }
   }, [accessToken]);
 
+  // Automatically fetch catalog on startup/login when accessToken is present
+  useEffect(() => {
+    if (accessToken) {
+      loadCatalog();
+    }
+  }, [accessToken, loadCatalog]);
+
   // Save rankings.json file to Google Drive
   const saveRankingsToDrive = async (updatedRankings: CloudRankings): Promise<boolean> => {
     if (!accessToken) return false;
