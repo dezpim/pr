@@ -240,6 +240,55 @@ function extractAttemptFromRideGPX(ridePoints: GPXPoint[], segment: CatalogSegme
   return null;
 }
 
+// Dynamic SVG Climb Silhouette Thumbnail Generator
+function renderClimbThumbnail(seg: CatalogSegment) {
+  const pointsCount = 10;
+  const heightFactor = Math.min(60, 20 + seg.elevationGainMeters / 10);
+  const pathPoints: string[] = ["0,80"];
+  
+  // Generate a smooth climb curve that correlates with the segment's gain and slope
+  for (let i = 0; i <= pointsCount; i++) {
+    const x = (i / pointsCount) * 260;
+    // Math wave curves to simulate hill profiles
+    const progress = i / pointsCount;
+    const wave = Math.sin(progress * Math.PI) * 8 * (seg.avgGradePercent > 4 ? 1.4 : 0.6);
+    const slopeHeight = progress * heightFactor;
+    const y = 80 - slopeHeight - wave;
+    pathPoints.push(`${x},${y}`);
+  }
+  pathPoints.push("260,80");
+  const pathD = `M ${pathPoints.join(" L ")} Z`;
+  const lineD = pathPoints.slice(0, pathPoints.length - 1).map((pt, idx) => (idx === 0 ? `M ${pt}` : `L ${pt}`)).join(" ");
+
+  return (
+    <div className="segment-card-thumbnail">
+      <svg viewBox="0 0 260 85" width="100%" height="85">
+        <defs>
+          <linearGradient id={`grad-${seg.id}`} x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="rgba(252, 97, 0, 0.35)" />
+            <stop offset="100%" stopColor="rgba(252, 97, 0, 0.0)" />
+          </linearGradient>
+        </defs>
+        
+        {/* Graticule guidelines */}
+        <line x1="0" y1="20" x2="260" y2="20" stroke="#F3F3F7" strokeDasharray="3,3" />
+        <line x1="0" y1="50" x2="260" y2="50" stroke="#F3F3F7" strokeDasharray="3,3" />
+        <line x1="0" y1="80" x2="260" y2="80" stroke="#E6E6EB" strokeWidth="1.5" />
+        
+        {/* Shaded Area */}
+        <path d={pathD} fill={`url(#grad-${seg.id})`} />
+        
+        {/* Bold Line */}
+        <path d={lineD} fill="none" stroke="#FC6100" strokeWidth="2.5" strokeLinecap="round" />
+        
+        {/* Start / Finish Dots */}
+        <circle cx="5" cy="78" r="4.5" fill="#4CAF50" stroke="#FFF" strokeWidth="1.5" />
+        <circle cx="255" cy={80 - heightFactor} r="4.5" fill="#F44336" stroke="#FFF" strokeWidth="1.5" />
+      </svg>
+    </div>
+  );
+}
+
 export default function App() {
   const {
     accessToken,
@@ -878,26 +927,31 @@ export default function App() {
                         setActiveView("leaderboard");
                       }}
                     >
-                      <div className="segment-card-title" title={seg.name}>
-                        ⛰️ {seg.name}
-                      </div>
-                      
-                      <div className="segment-card-stats">
-                        <span>{(seg.distanceMeters / 1000).toFixed(2)} km</span>
-                        <span className="divider">|</span>
-                        <span>{seg.elevationGainMeters}m 획득</span>
-                        <span className="divider">|</span>
-                        <span>{seg.avgGradePercent}% 경사</span>
-                      </div>
+                      {/* Segment Thumbnail Outline (Dynamic SVG Climb Silhouette) */}
+                      {renderClimbThumbnail(seg)}
 
-                      <div className="segment-card-footer">
-                        {lastRide ? (
-                          <span className="last-ride-label">
-                            최근 완주: {getRelativeTimeKo(lastRide)} ({lastRide})
-                          </span>
-                        ) : (
-                          <span className="no-ride-label">완주 기록 없음</span>
-                        )}
+                      <div className="segment-card-body">
+                        <div className="segment-card-title" title={seg.name}>
+                          ⛰️ {seg.name}
+                        </div>
+                        
+                        <div className="segment-card-stats">
+                          <span>{(seg.distanceMeters / 1000).toFixed(2)} km</span>
+                          <span className="divider">|</span>
+                          <span>{seg.elevationGainMeters}m 획득</span>
+                          <span className="divider">|</span>
+                          <span>{seg.avgGradePercent}% 경사</span>
+                        </div>
+
+                        <div className="segment-card-footer">
+                          {lastRide ? (
+                            <span className="last-ride-label">
+                              최근 완주: {getRelativeTimeKo(lastRide)} ({lastRide})
+                            </span>
+                          ) : (
+                            <span className="no-ride-label">완주 기록 없음</span>
+                          )}
+                        </div>
                       </div>
 
                       {/* Card Edit & Delete actions */}
