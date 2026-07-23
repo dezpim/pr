@@ -352,38 +352,49 @@ function renderRouteThumbnail(pathD?: string) {
 // Read-only elevation profile chart component for the detailed leaderboard page
 function ReadOnlyElevationChart({ points, activeSplitNum }: { points: GPXPoint[]; activeSplitNum?: number | null }) {
   if (points.length === 0) return <div className="splits-loading">고도 데이터를 불러오는 중...</div>;
+  
+  const baseDistance = points[0]?.distance || 0;
   const chartData = points.map((p) => ({
-    distanceKm: (p.distance / 1000).toFixed(2),
+    distanceKm: parseFloat(((p.distance - baseDistance) / 1000).toFixed(3)),
     elevation: parseFloat(p.ele.toFixed(1)),
   }));
+  
   const elevations = points.map((p) => p.ele);
   const minElevation = Math.floor(Math.min(...elevations) - 5);
   const maxElevation = Math.ceil(Math.max(...elevations) + 5);
 
-  // Calculate start/end distance for active split highlight box
-  let highlightX1: string | undefined = undefined;
-  let highlightX2: string | undefined = undefined;
+  // Calculate start/end distance for active split highlight box (numeric values)
+  let highlightX1: number | undefined = undefined;
+  let highlightX2: number | undefined = undefined;
 
   if (activeSplitNum && points.length >= 2) {
-    const totalDist = points[points.length - 1].distance - points[0].distance;
+    const totalDist = points[points.length - 1].distance - baseDistance;
     const splitDist = totalDist / 10;
     const startMeters = (activeSplitNum - 1) * splitDist;
     const endMeters = activeSplitNum * splitDist;
-    highlightX1 = (startMeters / 1000).toFixed(2);
-    highlightX2 = (endMeters / 1000).toFixed(2);
+    highlightX1 = parseFloat((startMeters / 1000).toFixed(3));
+    highlightX2 = parseFloat((endMeters / 1000).toFixed(3));
   }
   
   return (
     <div className="read-only-elevation-chart" style={{ width: "100%", height: "140px", marginTop: "12px" }}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-          <XAxis dataKey="distanceKm" stroke="#8E8E93" fontSize={9} tickLine={false} unit=" km" />
+          <XAxis
+            type="number"
+            dataKey="distanceKm"
+            domain={[0, "dataMax"]}
+            stroke="#8E8E93"
+            fontSize={9}
+            tickLine={false}
+            tickFormatter={(val) => `${val.toFixed(2)} km`}
+          />
           <YAxis domain={[minElevation, maxElevation]} stroke="#8E8E93" fontSize={9} tickLine={false} unit=" m" />
           <Tooltip
             contentStyle={{ backgroundColor: "#FFFFFF", borderColor: "#E6E6EB", borderRadius: "6px" }}
             labelStyle={{ color: "#242428", fontWeight: "bold" }}
             formatter={(value: any) => [`${value} m`, "고도"]}
-            labelFormatter={(label) => `거리: ${label} km`}
+            labelFormatter={(label) => `거리: ${Number(label).toFixed(2)} km`}
           />
           <Area type="monotone" dataKey="elevation" stroke="#FC6100" fill="url(#colorEleDetails)" strokeWidth={1.5} />
           
@@ -393,7 +404,7 @@ function ReadOnlyElevationChart({ points, activeSplitNum }: { points: GPXPoint[]
               x1={highlightX1}
               x2={highlightX2}
               fill="#FC6100"
-              fillOpacity={0.2}
+              fillOpacity={0.25}
             />
           )}
 
