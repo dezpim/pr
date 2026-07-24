@@ -1732,6 +1732,37 @@ body {
   font-size: 15px;
 }
 
+/* Golden Laurel Wreath Emblem Frame Rules */
+.laurel-wreath-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.laurel-wreath-svg {
+  position: absolute;
+  top: -12%;
+  left: -12%;
+  width: 124%;
+  height: 124%;
+  pointer-events: none;
+  z-index: 2;
+  filter: drop-shadow(0 3px 8px rgba(255, 160, 0, 0.5));
+}
+
+.laurel-wreath-content {
+  width: 74%;
+  height: 74%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+}
+
 .upload-icon {
   font-size: 32px;
   margin-bottom: 4px;

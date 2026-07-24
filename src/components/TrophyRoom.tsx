@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { TROPHY_REGISTRY } from "../utils/trophyEngine";
 import type { UnlockedTrophy } from "../types/trophy";
+import { LaurelWreath } from "./LaurelWreath";
 
 interface TrophyRoomProps {
   unlockedTrophies: UnlockedTrophy[];
@@ -71,13 +72,13 @@ export const TrophyRoom: React.FC<TrophyRoomProps> = ({ unlockedTrophies }) => {
       {/* Header & Progress Card */}
       <div className="trophy-room-header card">
         <div className="trophy-header-info">
-          <h2>🎖️ 나의 훈장 수집함 (총 {totalCount.toLocaleString()}개 훈장)</h2>
-          <p>연속 주행, 완주 횟수, 기록 단축, 누적 거리 및 고도 정복 등 3,200여 개의 영예로운 훈장을 수집해보세요!</p>
+          <h2>🌿 나의 훈장 & 월계관 수집함 (총 {totalCount.toLocaleString()}개)</h2>
+          <p>연속 주행, 완주 횟수, 기록 단축, 누적 거리 및 고도 정복 등 3,200여 개의 영예로운 월계관 훈장을 수집해보세요!</p>
         </div>
 
         <div className="trophy-progress-box">
           <div className="progress-labels">
-            <span className="progress-text">훈장 수집 현황</span>
+            <span className="progress-text">월계관 수집 현황</span>
             <span className="progress-value">
               <strong>{unlockedCount.toLocaleString()}</strong> / {totalCount.toLocaleString()}개 ({progressPercent}%)
             </span>
@@ -194,7 +195,7 @@ export const TrophyRoom: React.FC<TrophyRoomProps> = ({ unlockedTrophies }) => {
         </div>
       </div>
 
-      {/* Trophy Grid (Paginated 48 per page with 60px 3D Metallic Badge Icons) */}
+      {/* Trophy Grid (With Golden Laurel Wreath Frames) */}
       <div className="trophy-grid">
         {paginatedTrophies.map((t) => {
           const unlockedInfo = unlockedMap.get(t.id);
@@ -210,15 +211,33 @@ export const TrophyRoom: React.FC<TrophyRoomProps> = ({ unlockedTrophies }) => {
                 backgroundColor: isUnlocked ? t.badgeBg : "#FAFAFC",
               }}
             >
-              <div
-                className="trophy-room-icon"
-                style={{
-                  background: isUnlocked ? `linear-gradient(135deg, ${t.badgeColor}, #222)` : "#E0E0E6",
-                  color: isUnlocked ? "#FFF" : "#A0A0AA",
-                }}
-              >
-                {isUnlocked ? t.icon : "🔒"}
-              </div>
+              {isUnlocked ? (
+                <LaurelWreath size={62}>
+                  <div
+                    className="trophy-room-icon"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      borderRadius: "50%",
+                      background: `linear-gradient(135deg, ${t.badgeColor}, #111)`,
+                      color: "#FFF",
+                    }}
+                  >
+                    {t.icon}
+                  </div>
+                </LaurelWreath>
+              ) : (
+                <div
+                  className="trophy-room-icon"
+                  style={{
+                    backgroundColor: "#E0E0E6",
+                    color: "#A0A0AA",
+                    borderRadius: "16px",
+                  }}
+                >
+                  🔒
+                </div>
+              )}
 
               <div className="trophy-room-details">
                 <div className="trophy-room-title-row">

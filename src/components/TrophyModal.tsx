@@ -1,5 +1,6 @@
 import React from "react";
 import type { TrophyDefinition } from "../types/trophy";
+import { LaurelWreath } from "./LaurelWreath";
 
 interface TrophyModalProps {
   trophies: TrophyDefinition[];
@@ -31,16 +32,20 @@ export const TrophyModal: React.FC<TrophyModalProps> = ({ trophies, onClose, onV
   return (
     <div className="trophy-modal-backdrop" onClick={onClose}>
       <div className="trophy-modal-card" onClick={(e) => e.stopPropagation()}>
-        {/* Header Confetti & Title */}
+        {/* Header Confetti & Golden Laurel Wreath Title Badge */}
         <div className="trophy-modal-header">
-          <div className="trophy-modal-icon-badge">🎖️</div>
-          <h2>축하합니다! 영예의 훈장 달성!</h2>
+          <LaurelWreath size={90}>
+            <div className="trophy-modal-icon-badge" style={{ width: "100%", height: "100%", margin: 0, borderRadius: "50%" }}>
+              🎖️
+            </div>
+          </LaurelWreath>
+          <h2 style={{ marginTop: "12px" }}>축하합니다! 영예의 월계관 달성!</h2>
           <p className="trophy-modal-subtitle">
-            이번 주행으로 <strong>{trophies.length}개</strong>의 훈장/트로피를 달성했습니다!
+            이번 주행으로 <strong>{trophies.length}개</strong>의 훈장/월계관을 달성했습니다!
           </p>
         </div>
 
-        {/* Medal Ribbon Strip ("훈장 붙듯 주르륵!") */}
+        {/* Medal Ribbon Strip ("월계관과 훈장이 주르륵!") */}
         <div className="trophy-medal-strip">
           {trophies.map((t, idx) => {
             const tierStyle = getTierStyle(t.tier);
@@ -54,14 +59,20 @@ export const TrophyModal: React.FC<TrophyModalProps> = ({ trophies, onClose, onV
                   animationDelay: `${idx * 0.12}s`,
                 }}
               >
-                <div
-                  className="medal-badge-icon"
-                  style={{
-                    background: `linear-gradient(135deg, ${t.badgeColor}, #222)`,
-                  }}
-                >
-                  {t.icon}
-                </div>
+                <LaurelWreath size={68}>
+                  <div
+                    className="medal-badge-icon"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      borderRadius: "50%",
+                      background: `linear-gradient(135deg, ${t.badgeColor}, #111)`,
+                    }}
+                  >
+                    {t.icon}
+                  </div>
+                </LaurelWreath>
+
                 <div className="medal-badge-info">
                   <div className="medal-badge-header">
                     <span className="medal-badge-title" style={{ color: t.badgeColor }}>
