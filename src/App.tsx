@@ -1134,137 +1134,42 @@ export default function App() {
   const allRecentAttempts = getAllRecentRideAttempts();
 
   return (
-    <div className="app-shell" style={{ display: "flex", minHeight: "100vh", backgroundColor: "#F7F7FA" }}>
-      {/* Left Sidebar Navigation Menu */}
-      <aside className="app-sidebar" style={{ width: "240px", backgroundColor: "#1E1E24", color: "#FFFFFF", padding: "24px 16px", display: "flex", flexDirection: "column", gap: "24px", flexShrink: 0, borderRight: "1px solid #2D2D38" }}>
-        <div className="sidebar-brand" style={{ display: "flex", alignItems: "center", gap: "10px", paddingBottom: "16px", borderBottom: "1px solid #33333F" }}>
-          <span style={{ fontSize: "24px" }}>🏆</span>
-          <span style={{ fontSize: "18px", fontWeight: "bold", color: "#FFFFFF", letterSpacing: "-0.5px" }}>개인 리더보드</span>
-        </div>
-
-        <nav className="sidebar-nav" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          <button
-            className={`sidebar-nav-item ${activeView === "directory" ? "active" : ""}`}
+    <div className="app-container">
+      {/* Top Header with Logo and Navigation Tabs */}
+      <header className="app-header">
+        <div className="header-left">
+          <div
+            className="header-logo"
             onClick={() => setActiveView("directory")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              padding: "12px 14px",
-              borderRadius: "8px",
-              border: "none",
-              background: activeView === "directory" ? "#FC6100" : "transparent",
-              color: "#FFFFFF",
-              fontSize: "14px",
-              fontWeight: activeView === "directory" ? "bold" : "normal",
-              cursor: "pointer",
-              textAlign: "left",
-              width: "100%",
-              transition: "background 0.2s",
-            }}
+            style={{ cursor: "pointer" }}
+            title="홈 전체 구간 목록으로 이동"
           >
-            <span>📂</span> 전체 구간 목록
-          </button>
-
-          <button
-            className={`sidebar-nav-item ${activeView === "recent_records" ? "active" : ""}`}
-            onClick={() => setActiveView("recent_records")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              padding: "12px 14px",
-              borderRadius: "8px",
-              border: "none",
-              background: activeView === "recent_records" ? "#FC6100" : "transparent",
-              color: "#FFFFFF",
-              fontSize: "14px",
-              fontWeight: activeView === "recent_records" ? "bold" : "normal",
-              cursor: "pointer",
-              textAlign: "left",
-              width: "100%",
-              transition: "background 0.2s",
-            }}
-          >
-            <span>🔥</span> 최근 기록 보기
-            {allRecentAttempts.length > 0 && (
-              <span style={{ marginLeft: "auto", background: "rgba(255,255,255,0.2)", padding: "2px 8px", borderRadius: "10px", fontSize: "11px" }}>
-                {allRecentAttempts.length}
-              </span>
-            )}
-          </button>
-
-          {accessToken && (
-            <button
-              className={`sidebar-nav-item ${activeView === "editor" ? "active" : ""}`}
-              onClick={() => {
-                setGpxData(null);
-                setSegmentName("");
-                setDetectedClimbs([]);
-                setActiveView("editor");
-              }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "12px",
-                padding: "12px 14px",
-                borderRadius: "8px",
-                border: "none",
-                background: activeView === "editor" ? "#FC6100" : "transparent",
-                color: "#FFFFFF",
-                fontSize: "14px",
-                fontWeight: activeView === "editor" ? "bold" : "normal",
-                cursor: "pointer",
-                textAlign: "left",
-                width: "100%",
-                transition: "background 0.2s",
-              }}
-            >
-              <span>➕</span> 새 구간 등록
-            </button>
-          )}
-        </nav>
-
-        {/* Sidebar Footer info */}
-        <div style={{ marginTop: "auto", paddingTop: "16px", borderTop: "1px solid #33333F", fontSize: "12px", color: "#8E8E93" }}>
-          {accessToken ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <div style={{ color: "#FFF", fontWeight: "bold" }}>● {userEmail || "구글 연동 완료"}</div>
-              <button
-                onClick={logout}
-                style={{ background: "none", border: "none", color: "#8E8E93", cursor: "pointer", padding: 0, textAlign: "left", fontSize: "12px", textDecoration: "underline" }}
-              >
-                로그아웃
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={login}
-              style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "none", background: "#FC6100", color: "#FFF", fontWeight: "bold", cursor: "pointer" }}
-            >
-              구글 로그인
-            </button>
-          )}
-        </div>
-      </aside>
-
-      {/* Main Content Area */}
-      <div className="app-main-content" style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        {/* Top Navigation Header */}
-        <header className="app-header">
-          <div className="header-page-title">
-            <h2>
-              {activeView === "directory" && "📂 전체 구간 목록"}
-              {activeView === "recent_records" && "🔥 최근 주행 기록 모아보기"}
-              {activeView === "editor" && "➕ 새 구간 등록 및 분석"}
-              {activeView === "leaderboard" && (activeSegment ? `⛰️ ${activeSegment.name}` : "📊 구간 상세 리더보드")}
-            </h2>
+            <span className="logo-icon">🏆</span>
+            <h1>개인 리더보드</h1>
           </div>
 
-          <div className="header-actions">
-            {accessToken && activeView !== "editor" && (
+          {/* Navigation Tabs in Top Header */}
+          <nav className="header-nav-tabs">
+            <button
+              className={`nav-tab-btn ${activeView === "directory" ? "active" : ""}`}
+              onClick={() => setActiveView("directory")}
+            >
+              📂 전체 구간 목록
+            </button>
+
+            <button
+              className={`nav-tab-btn ${activeView === "recent_records" ? "active" : ""}`}
+              onClick={() => setActiveView("recent_records")}
+            >
+              🔥 최근 기록 전체 보기
+              {allRecentAttempts.length > 0 && (
+                <span className="tab-badge">{allRecentAttempts.length}</span>
+              )}
+            </button>
+
+            {accessToken && (
               <button
-                className="btn btn-primary btn-sm register-header-btn"
+                className={`nav-tab-btn ${activeView === "editor" ? "active" : ""}`}
                 onClick={() => {
                   setGpxData(null);
                   setSegmentName("");
@@ -1272,39 +1177,42 @@ export default function App() {
                   setActiveView("editor");
                 }}
               >
-                ➕ 구간 등록
+                ➕ 새 구간 등록
               </button>
             )}
+          </nav>
+        </div>
 
-            {accessToken ? (
-              <div className="user-profile">
-                <span className="user-email-badge">● {userEmail || "구글 연동됨"}</span>
-                <button className="btn btn-secondary btn-sm" onClick={logout}>
-                  로그아웃
-                </button>
-              </div>
-            ) : (
-              <button className="btn btn-primary btn-sm" onClick={login}>
-                로그인
+        <div className="header-actions">
+          {accessToken ? (
+            <div className="user-profile">
+              <span className="user-email">{userEmail || "연결됨"}</span>
+              <button className="btn btn-secondary btn-sm" onClick={logout}>
+                로그아웃
               </button>
-            )}
+            </div>
+          ) : (
+            <button className="btn btn-primary btn-sm" onClick={login}>
+              로그인
+            </button>
+          )}
 
-            {/* Notification Bell Center */}
-            {accessToken && (
-              <div className="notification-wrapper" style={{ position: "relative" }}>
-                <button
-                  className="btn-icon-nav"
-                  onClick={() => {
-                    setShowNotifications(!showNotifications);
-                    if (!showNotifications && unreadCount > 0) {
-                      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-                    }
-                  }}
-                  title="주행 분석 알림 센터"
-                >
-                  🔔
-                  {unreadCount > 0 && <span className="nav-badge">{unreadCount}</span>}
-                </button>
+          {/* Notification Bell Center */}
+          {accessToken && (
+            <div className="notification-wrapper" style={{ position: "relative" }}>
+              <button
+                className="btn-icon"
+                onClick={() => {
+                  setShowNotifications(!showNotifications);
+                  if (!showNotifications && unreadCount > 0) {
+                    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+                  }
+                }}
+                title="주행 분석 알림 센터"
+              >
+                🔔
+                {unreadCount > 0 && <span className="notification-badge">{unreadCount}</span>}
+              </button>
 
                 {/* Notification Popover Dropdown */}
                 {showNotifications && (
@@ -2269,6 +2177,5 @@ export default function App() {
         )}
       </main>
     </div>
-  </div>
   );
 }
