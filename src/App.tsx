@@ -778,19 +778,30 @@ export default function App() {
         // Upload matched attempts
         let successCount = 0;
         let duplicateCount = 0;
-        const matchedNames: string[] = [];
+        const matchedLines: string[] = [];
         for (const match of matchedAttempts) {
           const res = await addAttemptToCloud(match.id, match.attemptData);
           if (res === "added") {
             successCount++;
-            matchedNames.push(`${match.segmentName} (${formatMsToTime(match.durationMs)})`);
+            // Calculate rank for this attempt
+            const existingAttempts = rankings[match.id] || [];
+            const sorted = [...existingAttempts, { id: "temp", ...match.attemptData }].sort((a, b) => a.durationMs - b.durationMs);
+            const rankIndex = sorted.findIndex(a => a.date === match.attemptData.date && Math.abs(a.durationMs - match.durationMs) < 1000);
+            const rank = rankIndex !== -1 ? rankIndex + 1 : sorted.length;
+            const isPR = rank === 1;
+
+            if (isPR) {
+              matchedLines.push(`• ${match.segmentName}: 1등 👑 (개인 최고 기록!) (${formatMsToTime(match.durationMs)})`);
+            } else {
+              matchedLines.push(`• ${match.segmentName}: ${rank}등 (${formatMsToTime(match.durationMs)})`);
+            }
           } else if (res === "duplicate") {
             duplicateCount++;
           }
         }
 
         if (successCount > 0) {
-          let msg = `🎉 주행 기록 분석 및 등록 완료!\n다음 ${successCount}개 구간의 완주 기록이 새로 매칭되었습니다:\n\n${matchedNames.join("\n")}`;
+          let msg = `🎉 주행 기록 분석 및 등록 완료!\n\n📍 분석 및 매칭된 구간 순위 결과:\n${matchedLines.join("\n")}`;
           if (duplicateCount > 0) {
             msg += `\n\n(ℹ️ 이미 등록된 중복 기록 ${duplicateCount}개는 자동으로 제외되었습니다.)`;
           }
@@ -968,6 +979,22 @@ export default function App() {
         .filter(seg => (rankings[seg.id] || []).some(att => parseInt(att.id) >= maxTimestamp - 10000))
         .map(seg => seg.id)
     : [];
+
+  // Helper to calculate rank & PR status of the latest uploaded attempt in a segment
+  const getLatestAttemptRankInfo = (segmentId: string) => {
+    const attempts = rankings[segmentId] || [];
+    if (attempts.length === 0 || maxTimestamp <= 0) return null;
+
+    const recentAtt = attempts.find(att => parseInt(att.id) >= maxTimestamp - 10000);
+    if (!recentAtt) return null;
+
+    const sorted = [...attempts].sort((a, b) => a.durationMs - b.durationMs);
+    const rankIndex = sorted.findIndex(att => att.id === recentAtt.id);
+    const rank = rankIndex !== -1 ? rankIndex + 1 : sorted.length;
+    const isPR = rank === 1;
+
+    return { rank, isPR, durationMs: recentAtt.durationMs, speed: recentAtt.avgSpeed };
+  };
 
   const getSortedCatalogSegments = (): CatalogSegment[] => {
     return [...catalog.segments].sort((a, b) => {
@@ -1315,14 +1342,48 @@ export default function App() {
                 {/* Recently Challenged Segments Highlight Section */}
                 {lastUploadedSegmentIds.length > 0 && (
                   <div className="recent-challenges-section" style={{ marginBottom: "32px", background: "#FFFBF7", padding: "20px", borderRadius: "12px", border: "1px solid #FFEADA" }}>
-                    <h3 style={{ color: "#fc6100", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span>🔥 방금 분석된 매칭 구간 ({lastUploadedSegmentIds.length})</span>
+                    <h3 style={{ color: "#fc6100", marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span>🔥 방금 분석된 매칭 구간 달성 결과 ({lastUploadedSegmentIds.length})</span>
                     </h3>
+
+                    {/* Matched Courses Rank Summary Box */}
+                    <div className="matched-rank-summary-list" style={{ background: "#FFFFFF", padding: "14px 18px", borderRadius: "8px", border: "1px solid #FFE4D0", marginBottom: "16px" }}>
+                      <div style={{ fontWeight: "bold", fontSize: "14px", color: "#333", marginBottom: "8px" }}>
+                        📍 이번 주행 기록 분석 및 순위 결과:
+                      </div>
+                      <ul style={{ margin: 0, paddingLeft: "20px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                        {catalog.segments
+                          .filter(seg => lastUploadedSegmentIds.includes(seg.id))
+                          .map(seg => {
+                            const rankInfo = getLatestAttemptRankInfo(seg.id);
+                            return (
+                              <li key={seg.id} style={{ fontSize: "14px", color: "#333", lineHeight: "1.5" }}>
+                                <strong style={{ color: "#111" }}>{seg.name}</strong>:{" "}
+                                {rankInfo ? (
+                                  rankInfo.isPR ? (
+                                    <span style={{ color: "#fc6100", fontWeight: "bold" }}>
+                                      👑 1등. 개인 최고 기록 (PR)! 🎉 ({formatMsToTime(rankInfo.durationMs)})
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: "#444", fontWeight: "600" }}>
+                                      {rankInfo.rank}등 ({formatMsToTime(rankInfo.durationMs)})
+                                    </span>
+                                  )
+                                ) : (
+                                  <span style={{ color: "#888" }}>기록 완료</span>
+                                )}
+                              </li>
+                            );
+                          })}
+                      </ul>
+                    </div>
+
                     <div className="segment-grid">
                       {catalog.segments
                         .filter(seg => lastUploadedSegmentIds.includes(seg.id))
                         .map(seg => {
                           const lastRide = getSegmentLastRideDate(seg.id);
+                          const rankInfo = getLatestAttemptRankInfo(seg.id);
                           return (
                             <div
                               key={seg.id}
@@ -1336,7 +1397,20 @@ export default function App() {
                               {renderRouteThumbnail(seg.routeSvgPath || legacyPaths[seg.id])}
                               <div className="segment-card-body">
                                 <div className="segment-card-title" title={seg.name}>
-                                  ⛰️ {seg.name} <span className="recent-badge" style={{ color: "#fc6100", fontSize: "12px", marginLeft: "6px", fontWeight: "bold" }}>🔥 최근 도전</span>
+                                  ⛰️ {seg.name}{" "}
+                                  {rankInfo?.isPR ? (
+                                    <span className="recent-badge" style={{ background: "#fc6100", color: "#fff", padding: "2px 6px", borderRadius: "4px", fontSize: "11px", marginLeft: "6px", fontWeight: "bold" }}>
+                                      👑 1등 (PR)
+                                    </span>
+                                  ) : rankInfo ? (
+                                    <span className="recent-badge" style={{ background: "#FFEADA", color: "#fc6100", padding: "2px 6px", borderRadius: "4px", fontSize: "11px", marginLeft: "6px", fontWeight: "bold" }}>
+                                      🏆 {rankInfo.rank}등
+                                    </span>
+                                  ) : (
+                                    <span className="recent-badge" style={{ color: "#fc6100", fontSize: "12px", marginLeft: "6px", fontWeight: "bold" }}>
+                                      🔥 최근 도전
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="segment-card-stats">
                                   <span>{(seg.distanceMeters / 1000).toFixed(2)} km</span>
