@@ -26,6 +26,7 @@ export interface CloudAttempt {
   avgHr?: number;
   avgPower?: number;
   avgCadence?: number;
+  memo?: string;
 }
 
 export interface CloudRankings {
@@ -487,6 +488,19 @@ export function useGoogleDrive() {
     return await saveRankingsToDrive(updatedRankings);
   };
 
+  // Update attempt memo (up to 256 characters)
+  const updateAttemptMemo = async (segmentId: string, attemptId: string, memo: string): Promise<boolean> => {
+    if (!rankings[segmentId]) return false;
+    const updatedAttempts = rankings[segmentId].map((att) =>
+      att.id === attemptId ? { ...att, memo: memo.trim().slice(0, 256) } : att
+    );
+    const updatedRankings = {
+      ...rankings,
+      [segmentId]: updatedAttempts,
+    };
+    return await saveRankingsToDrive(updatedRankings);
+  };
+
   // Delete a segment and update catalog
   const deleteSegment = async (segmentId: string): Promise<boolean> => {
     if (!accessToken) return false;
@@ -757,6 +771,7 @@ export function useGoogleDrive() {
     downloadGPXFile,
     addAttemptToCloud,
     deleteAttemptFromCloud,
+    updateAttemptMemo,
     refreshCatalog: loadCatalog,
     cleanOrphanedFiles,
   };

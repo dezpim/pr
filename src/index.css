@@ -1177,7 +1177,78 @@ body {
 }
 
 .crown-badge {
-  font-size: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.crown-badge.gold {
+  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  color: #4A3300;
+  box-shadow: 0 2px 6px rgba(255, 215, 0, 0.4);
+}
+
+.crown-badge.silver {
+  background: linear-gradient(135deg, #E0E2E5 0%, #A0A5AA 100%);
+  color: #222222;
+  box-shadow: 0 2px 6px rgba(160, 165, 170, 0.4);
+}
+
+.crown-badge.bronze {
+  background: linear-gradient(135deg, #E69A5C 0%, #B85B14 100%);
+  color: #FFFFFF;
+  box-shadow: 0 2px 6px rgba(184, 91, 20, 0.4);
+}
+
+/* Memo Tooltip Hover Rules */
+.memo-tooltip-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.memo-tooltip-box {
+  visibility: hidden;
+  opacity: 0;
+  width: 240px;
+  background-color: #1E1E24;
+  color: #FFFFFF;
+  text-align: left;
+  border-radius: 8px;
+  padding: 10px 12px;
+  position: absolute;
+  z-index: 1000;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: none;
+}
+
+.memo-tooltip-box::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: #1E1E24 transparent transparent transparent;
+}
+
+.memo-tooltip-container:hover .memo-tooltip-box {
+  visibility: visible;
+  opacity: 1;
 }
 
 .row-avatar {

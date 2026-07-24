@@ -451,6 +451,7 @@ export default function App() {
     downloadGPXFile,
     addAttemptToCloud,
     deleteAttemptFromCloud,
+    updateAttemptMemo,
     cleanOrphanedFiles,
   } = useGoogleDrive();
 
@@ -930,6 +931,17 @@ export default function App() {
     }
   };
 
+  const handleEditAttemptMemo = async (segmentId: string, attemptId: string, currentMemo: string = "") => {
+    const input = window.prompt("주행 후기 / 메모를 입력하세요 (최대 256자):", currentMemo);
+    if (input !== null) {
+      const trimmed = input.trim().slice(0, 256);
+      const success = await updateAttemptMemo(segmentId, attemptId, trimmed);
+      if (success) {
+        alert("🎉 주행 후기 메모가 저장되었습니다.");
+      }
+    }
+  };
+
   const handleCleanOrphanedFiles = async () => {
     if (!window.confirm("catalog.json에 등록되어 있지 않은 모든 고아 GPX 파일들을 구글 드라이브에서 삭제하시겠습니까?")) {
       return;
@@ -1074,13 +1086,13 @@ export default function App() {
   const hasCadence = activeSegmentPoints.some(pt => pt.cadence !== undefined && pt.cadence > 0);
 
   // Dynamic grid template columns for leaderboard rows based on sensor existence
-  let leaderboardGridStyle = "60px 40px 1fr 140px 50px"; // base
+  let leaderboardGridStyle = "60px 40px 1fr 140px 50px 50px"; // base
   if (hasHr && hasPower) {
-    leaderboardGridStyle = "50px 40px 1fr 120px 80px 80px 50px";
+    leaderboardGridStyle = "50px 40px 1fr 120px 80px 80px 50px 50px";
   } else if (hasHr) {
-    leaderboardGridStyle = "50px 40px 1fr 120px 90px 50px";
+    leaderboardGridStyle = "50px 40px 1fr 120px 90px 50px 50px";
   } else if (hasPower) {
-    leaderboardGridStyle = "50px 40px 1fr 120px 90px 50px";
+    leaderboardGridStyle = "50px 40px 1fr 120px 90px 50px 50px";
   }
 
   // Helper to compile a flat chronological list of all recent ride attempts across all segments
@@ -1943,10 +1955,12 @@ export default function App() {
                     style={{ display: "grid", gridTemplateColumns: leaderboardGridStyle }}
                   >
                     <span>순위</span>
+                    <span></span>
                     <span>주행 일자</span>
                     <span>시간 / 평균 시속</span>
                     {hasHr && <span>심박 (HR)</span>}
                     {hasPower && <span>파워 (Power)</span>}
+                    <span style={{ textAlign: "center" }}>메모</span>
                     <span style={{ textAlign: "center" }}>삭제</span>
                   </div>
 
@@ -1956,17 +1970,17 @@ export default function App() {
                     return (
                       <React.Fragment key={att.id}>
                         <div
-                          className={`leaderboard-row-item clickable ${isExpanded ? "expanded" : ""} ${maxTimestamp > 0 && parseInt(att.id) >= maxTimestamp - 10000 ? "recent-highlight" : ""}`}
+                          className={`leaderboard-row-item clickable ${isExpanded ? "expanded" : ""} ${maxTimestamp > 0 && parseInt(att.id) >= maxTimestamp - 300000 ? "recent-highlight" : ""}`}
                           style={{ display: "grid", gridTemplateColumns: leaderboardGridStyle }}
                           onClick={() => setSelectedAttemptId(isExpanded ? null : att.id)}
                         >
                           <div className="row-rank">
                             {idx === 0 ? (
-                              <span className="crown-badge gold">👑 🎉</span>
+                              <span className="crown-badge gold" title="1등 (금메달)">🥇 1등</span>
                             ) : idx === 1 ? (
-                              <span className="crown-badge silver">👑 🎉</span>
+                              <span className="crown-badge silver" title="2등 (은메달)">🥈 2등</span>
                             ) : idx === 2 ? (
-                              <span className="crown-badge bronze">👑 🎉</span>
+                              <span className="crown-badge bronze" title="3등 (동메달)">🥉 3등</span>
                             ) : (
                               <span className="rank-num">{idx + 1}</span>
                             )}
@@ -1998,6 +2012,26 @@ export default function App() {
                               {att.avgPower ? `${att.avgPower} W` : "—"}
                             </span>
                           )}
+
+                          {/* Memo Button & Mouse Hover Tooltip */}
+                          <div className="row-memo" onClick={(e) => e.stopPropagation()} style={{ textAlign: "center" }}>
+                            <div className="memo-tooltip-container">
+                              <button
+                                className="btn-icon-only-small"
+                                onClick={() => handleEditAttemptMemo(activeSegment.id, att.id, att.memo)}
+                                title={att.memo ? `메모: ${att.memo}` : "주행 후기 메모 작성"}
+                                style={{ cursor: "pointer", fontSize: "15px", background: "none", border: "none" }}
+                              >
+                                {att.memo ? "💬" : "📝"}
+                              </button>
+                              {att.memo && (
+                                <div className="memo-tooltip-box">
+                                  <div style={{ fontWeight: "bold", color: "#FFD700", marginBottom: "4px" }}>📝 주행 후기 메모:</div>
+                                  <div>{att.memo}</div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
 
                           <div className="row-actions" onClick={(e) => e.stopPropagation()}>
                             <button
@@ -2187,17 +2221,19 @@ export default function App() {
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
                       <div style={{ fontSize: "24px" }}>
-                        {item.isPR ? "👑" : "🏆"}
+                        {item.rank === 1 ? "🥇" : item.rank === 2 ? "🥈" : item.rank === 3 ? "🥉" : "🏆"}
                       </div>
                       <div>
-                        <div style={{ fontWeight: "bold", fontSize: "16px", color: "#222", marginBottom: "4px" }}>
-                          ⛰️ {item.segmentName}{" "}
-                          {item.isPR ? (
-                            <span style={{ background: "#FC6100", color: "#FFF", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", fontWeight: "bold", marginLeft: "8px" }}>
-                              1등. 개인 최고 기록 (PR)! 🎉
-                            </span>
+                        <div style={{ fontWeight: "bold", fontSize: "16px", color: "#222", marginBottom: "4px", display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span>⛰️ {item.segmentName}</span>
+                          {item.rank === 1 ? (
+                            <span className="crown-badge gold" style={{ fontSize: "11px" }}>🥇 1등 (PR)! 🎉</span>
+                          ) : item.rank === 2 ? (
+                            <span className="crown-badge silver" style={{ fontSize: "11px" }}>🥈 2등</span>
+                          ) : item.rank === 3 ? (
+                            <span className="crown-badge bronze" style={{ fontSize: "11px" }}>🥉 3등</span>
                           ) : (
-                            <span style={{ background: "#FFEADA", color: "#FC6100", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", fontWeight: "bold", marginLeft: "8px" }}>
+                            <span style={{ background: "#FFEADA", color: "#FC6100", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", fontWeight: "bold" }}>
                               {item.rank}등
                             </span>
                           )}
@@ -2208,12 +2244,34 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: "18px", fontWeight: "bold", color: "#FC6100" }}>
-                        {formatMsToTime(item.attempt.durationMs)}
+                    <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                      {/* Memo button & hover tooltip */}
+                      <div onClick={(e) => e.stopPropagation()} style={{ textAlign: "center" }}>
+                        <div className="memo-tooltip-container">
+                          <button
+                            className="btn-icon-only-small"
+                            onClick={() => handleEditAttemptMemo(item.segmentId, item.attempt.id, item.attempt.memo)}
+                            title={item.attempt.memo ? `메모: ${item.attempt.memo}` : "주행 후기 메모 작성"}
+                            style={{ cursor: "pointer", fontSize: "16px", background: "none", border: "none" }}
+                          >
+                            {item.attempt.memo ? "💬" : "📝"}
+                          </button>
+                          {item.attempt.memo && (
+                            <div className="memo-tooltip-box">
+                              <div style={{ fontWeight: "bold", color: "#FFD700", marginBottom: "4px" }}>📝 주행 후기 메모:</div>
+                              <div>{item.attempt.memo}</div>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div style={{ fontSize: "12px", color: "#888" }}>
-                        평균 {item.attempt.avgSpeed.toFixed(1)} km/h
+
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: "18px", fontWeight: "bold", color: "#FC6100" }}>
+                          {formatMsToTime(item.attempt.durationMs)}
+                        </div>
+                        <div style={{ fontSize: "12px", color: "#888" }}>
+                          평균 {item.attempt.avgSpeed.toFixed(1)} km/h
+                        </div>
                       </div>
                     </div>
                   </div>
