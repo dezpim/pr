@@ -456,6 +456,7 @@ export default function App() {
 
   // Toggle manual attempt input form
   const [showManualForm, setShowManualForm] = useState<boolean>(false);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
 
   // Registration states
   const [gpxData, setGpxData] = useState<GPXData | null>(null);
@@ -504,6 +505,13 @@ export default function App() {
   useEffect(() => {
     setTempClientId(clientId);
   }, [clientId]);
+
+  // Redirect to directory view if user logs out
+  useEffect(() => {
+    if (!accessToken && activeView !== "directory") {
+      setActiveView("directory");
+    }
+  }, [accessToken, activeView]);
 
   // Set default selected segment when catalog loads
   useEffect(() => {
@@ -699,31 +707,70 @@ export default function App() {
     }
   };
 
-  // Extract attempt record from uploaded ride GPX file (with actual sensor values)
-  const handleRideGpxUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !activeSegment) return;
+  // Shared process for global GPX upload/drop
+  const processGlobalRideGpxFile = async (file: File) => {
+    if (catalog.segments.length === 0) return;
 
     const reader = new FileReader();
     reader.onload = async (event) => {
       const text = event.target?.result as string;
       try {
         const parsed = parseGPX(text);
-        const attemptData = extractAttemptFromRideGPX(parsed.points, activeSegment);
-        if (!attemptData) {
-          alert("업로드한 GPX 파일에서 해당 구간 주행 기록을 추출할 수 없습니다. 구간의 시작/종료 좌표를 실제로 지나갔는지 확인해 주세요 (오차범위 150m).");
+        const matchedAttempts: { segmentName: string; durationMs: number; avgSpeed: number; id: string; attemptData: Omit<CloudAttempt, "id"> }[] = [];
+
+        for (const segment of catalog.segments) {
+          const attemptData = extractAttemptFromRideGPX(parsed.points, segment);
+          if (attemptData) {
+            matchedAttempts.push({
+              segmentName: segment.name,
+              durationMs: attemptData.durationMs,
+              avgSpeed: attemptData.avgSpeed,
+              id: segment.id,
+              attemptData
+            });
+          }
+        }
+
+        if (matchedAttempts.length === 0) {
+          alert("업로드한 GPX 파일에서 매칭된 구간 주행 기록을 찾을 수 없습니다. (오차범위 150m)");
           return;
         }
 
-        const success = await addAttemptToCloud(selectedSegId, attemptData);
-        if (success) {
-          alert(`🎉 주행 기록이 성공적으로 매칭되어 리더보드에 추가되었습니다!\n기록: ${formatMsToTime(attemptData.durationMs)} | 평균 시속: ${attemptData.avgSpeed} km/h`);
+        // Upload matched attempts
+        let successCount = 0;
+        const matchedNames: string[] = [];
+        for (const match of matchedAttempts) {
+          const success = await addAttemptToCloud(match.id, match.attemptData);
+          if (success) {
+            successCount++;
+            matchedNames.push(`${match.segmentName} (${formatMsToTime(match.durationMs)})`);
+          }
+        }
+
+        if (successCount > 0) {
+          alert(`🎉 주행 기록 분석 및 등록 완료!\n다음 ${successCount}개 구간의 완주 기록이 매칭되었습니다:\n\n${matchedNames.join("\n")}`);
         }
       } catch (err) {
         alert("GPX 파일 파싱에 실패했습니다. 올바른 GPX 형식인지 확인해 주세요.");
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleGlobalRideGpxUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processGlobalRideGpxFile(file);
+    }
+  };
+
+  const handleGlobalRideGpxDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      processGlobalRideGpxFile(file);
+    }
   };
 
   // Handle manual record entry submission
@@ -854,8 +901,35 @@ export default function App() {
     return sorted[0].date;
   };
 
+  // Find max attempt timestamp across all segments to identify the latest import session
+  let maxTimestamp = 0;
+  Object.values(rankings).forEach(attempts => {
+    attempts.forEach(att => {
+      const ts = parseInt(att.id);
+      if (!isNaN(ts) && ts > maxTimestamp) {
+        maxTimestamp = ts;
+      }
+    });
+  });
+
+  // Derived list of recently challenged segment IDs from the latest upload session (within 10 seconds of maxTimestamp)
+  const lastUploadedSegmentIds = maxTimestamp > 0
+    ? catalog.segments
+        .filter(seg => (rankings[seg.id] || []).some(att => parseInt(att.id) >= maxTimestamp - 10000))
+        .map(seg => seg.id)
+    : [];
+
   const getSortedCatalogSegments = (): CatalogSegment[] => {
     return [...catalog.segments].sort((a, b) => {
+      const attemptsA = rankings[a.id] || [];
+      const attemptsB = rankings[b.id] || [];
+      
+      const hasRecentA = maxTimestamp > 0 && attemptsA.some(att => parseInt(att.id) >= maxTimestamp - 10000);
+      const hasRecentB = maxTimestamp > 0 && attemptsB.some(att => parseInt(att.id) >= maxTimestamp - 10000);
+
+      if (hasRecentA && !hasRecentB) return -1;
+      if (!hasRecentA && hasRecentB) return 1;
+
       const dateA = getSegmentLastRideDate(a.id);
       const dateB = getSegmentLastRideDate(b.id);
       if (!dateA) return 1;
@@ -891,7 +965,7 @@ export default function App() {
         </div>
 
         <div className="header-actions">
-          {activeView !== "editor" && (
+          {accessToken && activeView !== "editor" && (
             <button
               className="btn btn-primary btn-sm register-header-btn"
               onClick={() => {
@@ -937,20 +1011,22 @@ export default function App() {
                   onChange={(e) => setTempClientId(e.target.value)}
                 />
               </div>
-              <div className="form-group" style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px solid #E6E6EB" }}>
-                <label>저장소 및 파일 관리</label>
-                <button
-                  className="btn btn-secondary btn-block"
-                  style={{ backgroundColor: "#F3F3F7", color: "#E34F00", border: "1px solid #FC6100", fontWeight: "bold" }}
-                  onClick={handleCleanOrphanedFiles}
-                  disabled={loading}
-                >
-                  {loading ? "정리 중..." : "🧹 미등록 쓰레기 GPX 파일 정리"}
-                </button>
-                <p style={{ fontSize: "11px", color: "#8E8E93", marginTop: "6px", lineHeight: "1.4" }}>
-                  현재 리더보드 구간 목록(catalog.json)에 등록되어 있지 않으면서 구글 드라이브 폴더에 남겨진 쓰레기 GPX 파일들을 자동 감지하여 완전 제거합니다.
-                </p>
-              </div>
+              {accessToken && (
+                <div className="form-group" style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px solid #E6E6EB" }}>
+                  <label>저장소 및 파일 관리</label>
+                  <button
+                    className="btn btn-secondary btn-block"
+                    style={{ backgroundColor: "#F3F3F7", color: "#E34F00", border: "1px solid #FC6100", fontWeight: "bold" }}
+                    onClick={handleCleanOrphanedFiles}
+                    disabled={loading}
+                  >
+                    {loading ? "정리 중..." : "🧹 미등록 쓰레기 GPX 파일 정리"}
+                  </button>
+                  <p style={{ fontSize: "11px", color: "#8E8E93", marginTop: "6px", lineHeight: "1.4" }}>
+                    현재 리더보드 구간 목록(catalog.json)에 등록되어 있지 않으면서 구글 드라이브 폴더에 남겨진 쓰레기 GPX 파일들을 자동 감지하여 완전 제거합니다.
+                  </p>
+                </div>
+              )}
               <div className="settings-buttons">
                 <button className="btn btn-primary" onClick={handleSaveSettings}>
                   설정 저장
@@ -1109,76 +1185,167 @@ export default function App() {
         {/* View B: Segment Directory Navigator */}
         {activeView === "directory" && (
           <div className="directory-container">
-            <div className="directory-header-row">
-              <h2>🔥 최근 도전 구간 목록 ({sortedSegments.length})</h2>
-              <p className="directory-subtitle">구간 카드를 클릭하여 개인 리더보드 순위표를 확인하세요.</p>
-            </div>
-
-            {sortedSegments.length > 0 ? (
-              <div className="segment-grid">
-                {sortedSegments.map((seg) => {
-                  const lastRide = getSegmentLastRideDate(seg.id);
-                  return (
-                    <div
-                      key={seg.id}
-                      className="segment-card"
-                      onClick={() => {
-                        setSelectedSegId(seg.id);
-                        setActiveView("leaderboard");
-                      }}
-                    >
-                      {/* Segment Thumbnail Outline (Pre-rendered 2D Route Map) */}
-                      {renderRouteThumbnail(seg.routeSvgPath || legacyPaths[seg.id])}
-
-                      <div className="segment-card-body">
-                        <div className="segment-card-title" title={seg.name}>
-                          ⛰️ {seg.name}
-                        </div>
-                        
-                        <div className="segment-card-stats">
-                          <span>{(seg.distanceMeters / 1000).toFixed(2)} km</span>
-                          <span className="divider">|</span>
-                          <span>{seg.elevationGainMeters}m 획득</span>
-                          <span className="divider">|</span>
-                          <span>{seg.avgGradePercent}% 경사</span>
-                        </div>
-
-                        <div className="segment-card-footer">
-                          {lastRide ? (
-                            <span className="last-ride-label">
-                              최근 완주: {getRelativeTimeKo(lastRide)} ({lastRide})
-                            </span>
-                          ) : (
-                            <span className="no-ride-label">완주 기록 없음</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Card Edit & Delete actions */}
-                      <div className="segment-card-actions" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          className="btn-icon-only-small"
-                          onClick={() => handleSegmentRename(seg.id, seg.name)}
-                          title="이름 수정"
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          className="btn-icon-only-small text-danger"
-                          onClick={() => handleSegmentDelete(seg.id, seg.name)}
-                          title="삭제"
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+            {!accessToken ? (
+              <div className="card welcome-card" style={{ textAlign: "center", padding: "60px 20px", display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", maxWidth: "600px", margin: "40px auto" }}>
+                <span style={{ fontSize: "54px" }}>🏆</span>
+                <h2 style={{ fontSize: "24px", color: "#333", fontWeight: "bold" }}>개인 리더보드</h2>
+                <p style={{ color: "#666", fontSize: "14px", lineHeight: "1.6", margin: "0 auto 12px" }}>
+                  자신만의 자전거 코스 구간을 등록하고 완주 기록 리더보드를 관리해 보세요. 서비스를 이용하려면 구글 계정 로그인이 필요합니다.
+                </p>
+                <button className="btn btn-primary" onClick={login} style={{ padding: "12px 24px", fontSize: "15px", fontWeight: "bold" }}>
+                  구글 계정으로 로그인하기
+                </button>
               </div>
             ) : (
-              <div className="empty-catalog-message">
-                등록된 구간이 없습니다. 우측 상단의 "➕ 구간 등록"을 눌러 첫 세그먼트를 추가해 보세요!
-              </div>
+              <>
+                <div className="directory-header-row">
+                  <h2>🔥 최근 도전 구간 목록 ({sortedSegments.length})</h2>
+                  <p className="directory-subtitle">구간 카드를 클릭하여 개인 리더보드 순위표를 확인하세요.</p>
+                </div>
+
+                {/* Global GPX Upload Card with Drag and Drop Support */}
+                <div className="card add-attempt-card compact-card" style={{ marginBottom: "24px" }}>
+                  <div className="card-header-with-action">
+                    <h4>🚴 새 주행 기록 GPX 업로드 (전체 구간 자동 매칭)</h4>
+                  </div>
+                  <div 
+                    className={`ride-upload-zone ${isDragging ? "dragging" : ""}`}
+                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={handleGlobalRideGpxDrop}
+                  >
+                    <input
+                      type="file"
+                      accept=".gpx"
+                      id="global-ride-gpx-upload"
+                      onChange={handleGlobalRideGpxUpload}
+                      disabled={loading}
+                    />
+                    <label htmlFor="global-ride-gpx-upload">
+                      <span className="upload-icon">📂</span>
+                      <strong>새 주행 GPX 파일 선택</strong> 또는 드래그하여 자동으로 완주 기록 추출 및 전체 리더보드 랭킹 추가
+                    </label>
+                  </div>
+                </div>
+
+                {/* Recently Challenged Segments Highlight Section */}
+                {lastUploadedSegmentIds.length > 0 && (
+                  <div className="recent-challenges-section" style={{ marginBottom: "32px", background: "#FFFBF7", padding: "20px", borderRadius: "12px", border: "1px solid #FFEADA" }}>
+                    <h3 style={{ color: "#fc6100", marginBottom: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span>🔥 방금 분석된 매칭 구간 ({lastUploadedSegmentIds.length})</span>
+                    </h3>
+                    <div className="segment-grid">
+                      {catalog.segments
+                        .filter(seg => lastUploadedSegmentIds.includes(seg.id))
+                        .map(seg => {
+                          const lastRide = getSegmentLastRideDate(seg.id);
+                          return (
+                            <div
+                              key={seg.id}
+                              className="segment-card"
+                              style={{ border: "2px solid #fc6100" }}
+                              onClick={() => {
+                                setSelectedSegId(seg.id);
+                                setActiveView("leaderboard");
+                              }}
+                            >
+                              {renderRouteThumbnail(seg.routeSvgPath || legacyPaths[seg.id])}
+                              <div className="segment-card-body">
+                                <div className="segment-card-title" title={seg.name}>
+                                  ⛰️ {seg.name} <span className="recent-badge" style={{ color: "#fc6100", fontSize: "12px", marginLeft: "6px", fontWeight: "bold" }}>🔥 최근 도전</span>
+                                </div>
+                                <div className="segment-card-stats">
+                                  <span>{(seg.distanceMeters / 1000).toFixed(2)} km</span>
+                                  <span className="divider">|</span>
+                                  <span>{seg.elevationGainMeters}m 획득</span>
+                                  <span className="divider">|</span>
+                                  <span>{seg.avgGradePercent}% 경사</span>
+                                </div>
+                                <div className="segment-card-footer">
+                                  {lastRide ? (
+                                    <span className="last-ride-label">
+                                      최근 완주: {getRelativeTimeKo(lastRide)} ({lastRide})
+                                    </span>
+                                  ) : (
+                                    <span className="no-ride-label">완주 기록 없음</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+
+                {sortedSegments.length > 0 ? (
+                  <div className="segment-grid">
+                    {sortedSegments.map((seg) => {
+                      const lastRide = getSegmentLastRideDate(seg.id);
+                      const hasRecent = maxTimestamp > 0 && (rankings[seg.id] || []).some(att => parseInt(att.id) >= maxTimestamp - 10000);
+                      return (
+                        <div
+                          key={seg.id}
+                          className="segment-card"
+                          onClick={() => {
+                            setSelectedSegId(seg.id);
+                            setActiveView("leaderboard");
+                          }}
+                        >
+                          {/* Segment Thumbnail Outline (Pre-rendered 2D Route Map) */}
+                          {renderRouteThumbnail(seg.routeSvgPath || legacyPaths[seg.id])}
+
+                          <div className="segment-card-body">
+                            <div className="segment-card-title" title={seg.name}>
+                              ⛰️ {seg.name} {hasRecent && <span className="recent-badge" style={{ color: "#fc6100", fontSize: "12px", marginLeft: "6px", fontWeight: "bold" }}>🔥 최근 도전</span>}
+                            </div>
+                            
+                            <div className="segment-card-stats">
+                              <span>{(seg.distanceMeters / 1000).toFixed(2)} km</span>
+                              <span className="divider">|</span>
+                              <span>{seg.elevationGainMeters}m 획득</span>
+                              <span className="divider">|</span>
+                              <span>{seg.avgGradePercent}% 경사</span>
+                            </div>
+
+                            <div className="segment-card-footer">
+                              {lastRide ? (
+                                <span className="last-ride-label">
+                                  최근 완주: {getRelativeTimeKo(lastRide)} ({lastRide})
+                                </span>
+                              ) : (
+                                <span className="no-ride-label">완주 기록 없음</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Card Edit & Delete actions */}
+                          <div className="segment-card-actions" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              className="btn-icon-only-small"
+                              onClick={() => handleSegmentRename(seg.id, seg.name)}
+                              title="이름 수정"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              className="btn-icon-only-small text-danger"
+                              onClick={() => handleSegmentDelete(seg.id, seg.name)}
+                              title="삭제"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="empty-catalog-message">
+                    등록된 구간이 없습니다. 우측 상단의 "➕ 구간 등록"을 눌러 첫 세그먼트를 추가해 보세요!
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -1306,17 +1473,17 @@ export default function App() {
                     return (
                       <React.Fragment key={att.id}>
                         <div
-                          className={`leaderboard-row-item clickable ${isExpanded ? "expanded" : ""}`}
+                          className={`leaderboard-row-item clickable ${isExpanded ? "expanded" : ""} ${maxTimestamp > 0 && parseInt(att.id) >= maxTimestamp - 10000 ? "recent-highlight" : ""}`}
                           style={{ display: "grid", gridTemplateColumns: leaderboardGridStyle }}
                           onClick={() => setSelectedAttemptId(isExpanded ? null : att.id)}
                         >
                           <div className="row-rank">
                             {idx === 0 ? (
-                              <span className="crown-badge gold">👑</span>
+                              <span className="crown-badge gold">👑 🎉</span>
                             ) : idx === 1 ? (
-                              <span className="crown-badge silver">👑</span>
+                              <span className="crown-badge silver">👑 🎉</span>
                             ) : idx === 2 ? (
-                              <span className="crown-badge bronze">👑</span>
+                              <span className="crown-badge bronze">👑 🎉</span>
                             ) : (
                               <span className="rank-num">{idx + 1}</span>
                             )}
@@ -1439,31 +1606,17 @@ export default function App() {
               )}
             </div>
 
-            {/* Record Add Options (GPX Upload & Toggleable Manual Entry) */}
+            {/* Record Add Options (Only Toggleable Manual Entry) */}
             <div className="record-actions-container">
               <div className="card add-attempt-card compact-card">
                 <div className="card-header-with-action">
-                  <h4>🚴 새 주행 기록 GPX 업로드 (기록 추가)</h4>
+                  <h4>➕ 수동 주행 기록 직접 등록 (기록 추가)</h4>
                   <button
                     className="btn btn-secondary btn-xs manual-toggle-btn"
                     onClick={() => setShowManualForm(!showManualForm)}
                   >
                     {showManualForm ? "수동 창 닫기" : "➕ 수동 기록 추가"}
                   </button>
-                </div>
-
-                <div className="ride-upload-zone">
-                  <input
-                    type="file"
-                    accept=".gpx"
-                    id="ride-gpx-upload"
-                    onChange={handleRideGpxUpload}
-                    disabled={loading}
-                  />
-                  <label htmlFor="ride-gpx-upload">
-                    <span className="upload-icon">📂</span>
-                    <strong>새 주행 GPX 파일 선택</strong> 또는 드래그하여 자동으로 완주 기록 추출 및 랭킹 추가
-                  </label>
                 </div>
 
                 {/* Collapsible Manual Record Input Form */}

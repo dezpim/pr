@@ -1368,3 +1368,13 @@ body {
   border-radius: 4px;
 }
 
+.leaderboard-row-item.recent-highlight {
+  background-color: #FFF2EB !important;
+  border-left: 4px solid var(--strava-orange, #fc6100);
+}
+
+.ride-upload-zone.dragging {
+  border: 2px dashed var(--strava-orange, #fc6100) !important;
+  background-color: #FFF2EB !important;
+}
+
