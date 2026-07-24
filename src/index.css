@@ -1620,11 +1620,341 @@ body {
   user-select: none;
 }
 
-.zoom-toggle-label input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--strava-orange);
+/* ==========================================================================
+   Refined Trophy & Medal System UI (Modern & Elegant Design System)
+   ========================================================================== */
+
+.trophy-room-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-bottom: 60px;
+}
+
+/* 1. Header Banner Card */
+.trophy-room-header {
+  padding: 24px 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  background: linear-gradient(135deg, #FFFBF7 0%, #FFFFFF 100%);
+  border-radius: 16px;
+  border: 1px solid #FFE0CC;
+  box-shadow: 0 4px 15px rgba(252, 97, 0, 0.05);
+}
+
+.trophy-header-info h2 {
+  margin: 0 0 6px 0;
+  font-size: 22px;
+  font-weight: 900;
+  color: #1A1A1E;
+  letter-spacing: -0.5px;
+}
+
+.trophy-header-info p {
+  margin: 0;
+  font-size: 13px;
+  color: #66666E;
+  line-height: 1.5;
+}
+
+.trophy-progress-box {
+  width: 260px;
+  flex-shrink: 0;
+  background: #FFFFFF;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid #E6E6EB;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+}
+
+.progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.progress-text {
+  font-weight: 700;
+  color: #555;
+}
+
+.progress-value {
+  color: #111;
+}
+
+.progress-bar-bg {
+  height: 8px;
+  background-color: #E6E6EB;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #FC6100 0%, #FF9800 100%);
+  border-radius: 4px;
+  transition: width 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* 2. Unified Control Panel Card */
+.trophy-control-panel {
+  background: #FFFFFF;
+  border-radius: 16px;
+  border: 1px solid #E6E6EB;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+}
+
+.control-panel-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.trophy-search-box {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.trophy-search-input {
+  width: 100%;
+  padding: 10px 16px 10px 40px;
+  border-radius: 20px;
+  border: 1px solid #D1D1D6;
+  font-size: 13px;
+  outline: none;
+  background-color: #FAFAFC;
+  transition: all 0.2s ease;
+}
+
+.trophy-search-input:focus {
+  border-color: #FC6100;
+  background-color: #FFFFFF;
+  box-shadow: 0 0 0 3px rgba(252, 97, 0, 0.12);
+}
+
+.search-icon-inside {
+  position: absolute;
+  left: 14px;
+  font-size: 15px;
+  color: #8E8E93;
+  pointer-events: none;
+}
+
+.trophy-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #444;
   cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  background: #F4F4F7;
+  padding: 8px 14px;
+  border-radius: 20px;
+  transition: background 0.2s;
+}
+
+.trophy-checkbox-label:hover {
+  background: #EBEBEF;
+}
+
+.trophy-checkbox-label input[type="checkbox"] {
+  accent-color: #FC6100;
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+/* Category Filter Pills */
+.trophy-filter-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filter-btn {
+  padding: 7px 15px;
+  border-radius: 18px;
+  border: 1px solid #E6E6EB;
+  background: #FFFFFF;
+  color: #55555A;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.filter-btn:hover {
+  background: #F4F4F7;
+  color: #1A1A1E;
+  border-color: #D1D1D6;
+}
+
+.filter-btn.active {
+  background: #FC6100;
+  color: #FFFFFF;
+  border-color: #FC6100;
+  font-weight: 800;
+  box-shadow: 0 3px 10px rgba(252, 97, 0, 0.25);
+}
+
+/* Pagination Status & Controls Bar */
+.trophy-pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 12px;
+  border-top: 1px solid #F0F0F5;
+  font-size: 13px;
+  color: #666;
+}
+
+.pagination-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.page-number-text {
+  font-weight: 800;
+  color: #1A1A1E;
+  font-size: 13px;
+  padding: 0 4px;
+}
+
+/* 3. Refined Trophy Cards Responsive Grid */
+.trophy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  width: 100%;
+}
+
+.trophy-room-card {
+  padding: 16px;
+  border-radius: 16px;
+  border: 1.5px solid #E6E6EB;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #FFFFFF;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  min-height: 108px;
+}
+
+.trophy-room-card.unlocked {
+  background: linear-gradient(135deg, #FFFDF9 0%, #FFFFFF 100%);
+  border-color: #FFD700;
+  box-shadow: 0 2px 8px rgba(255, 215, 0, 0.12);
+}
+
+.trophy-room-card.unlocked:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 22px rgba(255, 152, 0, 0.18);
+}
+
+.trophy-room-card.locked {
+  background-color: #FAFAFC;
+  border-color: #EBF0F5;
+  opacity: 0.85;
+}
+
+.trophy-room-card.locked:hover {
+  border-color: #D1D1D6;
+  opacity: 1;
+}
+
+.trophy-room-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.trophy-room-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.trophy-room-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.trophy-room-title {
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trophy-room-tier {
+  font-size: 9px;
+  font-weight: 900;
+  padding: 2px 7px;
+  border-radius: 10px;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.trophy-room-desc {
+  font-size: 12px;
+  color: #666;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.trophy-room-praise {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #222;
+  background: #FFF9F2;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border-left: 3px solid #FC6100;
+}
+
+.trophy-room-date {
+  font-size: 10px;
+  color: #8E8E93;
+  margin-top: 2px;
+  font-weight: normal;
+}
+
+.trophy-room-locked-text {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #9999A0;
 }
 
 /* Fine-tuning range precision buttons */

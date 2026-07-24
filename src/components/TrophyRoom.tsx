@@ -69,8 +69,8 @@ export const TrophyRoom: React.FC<TrophyRoomProps> = ({ unlockedTrophies }) => {
 
   return (
     <div className="trophy-room-container">
-      {/* Header & Progress Card */}
-      <div className="trophy-room-header card">
+      {/* 1. Header Hero Progress Card */}
+      <div className="trophy-room-header">
         <div className="trophy-header-info">
           <h2>🌿 나의 훈장 & 월계관 수집함 (총 {totalCount.toLocaleString()}개)</h2>
           <p>연속 주행, 완주 횟수, 기록 단축, 누적 거리 및 고도 정복 등 3,200여 개의 영예로운 월계관 훈장을 수집해보세요!</p>
@@ -92,110 +92,115 @@ export const TrophyRoom: React.FC<TrophyRoomProps> = ({ unlockedTrophies }) => {
         </div>
       </div>
 
-      {/* Controls: Search Bar & Toggle */}
-      <div className="trophy-room-controls">
-        <input
-          type="text"
-          className="trophy-search-input"
-          placeholder="🔍 훈장 이름, 검색어 입력... (예: 100km, 연속, 칼치기, 1분)"
-          value={searchQuery}
-          onChange={(e) => {
-            setSearchQuery(e.target.value);
-            setCurrentPage(1);
-          }}
-        />
+      {/* 2. Unified Control Panel Card (Search, Filters, Pagination) */}
+      <div className="trophy-control-panel">
+        <div className="control-panel-top">
+          <div className="trophy-search-box">
+            <span className="search-icon-inside">🔍</span>
+            <input
+              type="text"
+              className="trophy-search-input"
+              placeholder="훈장 이름, 키워드 검색... (예: 100km, 연속, 1분, 칼치기)"
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
 
-        <label className="trophy-checkbox-label">
-          <input
-            type="checkbox"
-            checked={onlyUnlocked}
-            onChange={(e) => {
-              setOnlyUnlocked(e.target.checked);
-              setCurrentPage(1);
-            }}
-          />
-          <span>달성한 훈장만 보기 ({unlockedCount}개)</span>
-        </label>
-      </div>
+          <label className="trophy-checkbox-label">
+            <input
+              type="checkbox"
+              checked={onlyUnlocked}
+              onChange={(e) => {
+                setOnlyUnlocked(e.target.checked);
+                setCurrentPage(1);
+              }}
+            />
+            <span>달성 훈장만 ({unlockedCount}개)</span>
+          </label>
+        </div>
 
-      {/* Category Filter Tabs */}
-      <div className="trophy-filter-tabs">
-        <button
-          className={`filter-btn ${selectedCat === "all" ? "active" : ""}`}
-          onClick={() => { setSelectedCat("all"); setCurrentPage(1); }}
-        >
-          전체 보기 ({totalCount.toLocaleString()})
-        </button>
-        <button
-          className={`filter-btn ${selectedCat === "streak" ? "active" : ""}`}
-          onClick={() => { setSelectedCat("streak"); setCurrentPage(1); }}
-        >
-          🔥 연속 & 출석
-        </button>
-        <button
-          className={`filter-btn ${selectedCat === "improvement" ? "active" : ""}`}
-          onClick={() => { setSelectedCat("improvement"); setCurrentPage(1); }}
-        >
-          ⏱️ 기록 단축
-        </button>
-        <button
-          className={`filter-btn ${selectedCat === "volume" ? "active" : ""}`}
-          onClick={() => { setSelectedCat("volume"); setCurrentPage(1); }}
-        >
-          🎯 완주 누적
-        </button>
-        <button
-          className={`filter-btn ${selectedCat === "rank" ? "active" : ""}`}
-          onClick={() => { setSelectedCat("rank"); setCurrentPage(1); }}
-        >
-          👑 순위 & PR
-        </button>
-        <button
-          className={`filter-btn ${selectedCat === "speed" ? "active" : ""}`}
-          onClick={() => { setSelectedCat("speed"); setCurrentPage(1); }}
-        >
-          🚄 속도 & 내리막
-        </button>
-        <button
-          className={`filter-btn ${selectedCat === "time" ? "active" : ""}`}
-          onClick={() => { setSelectedCat("time"); setCurrentPage(1); }}
-        >
-          🌙 시각 & 요일
-        </button>
-        <button
-          className={`filter-btn ${selectedCat === "special" ? "active" : ""}`}
-          onClick={() => { setSelectedCat("special"); setCurrentPage(1); }}
-        >
-          🏔️ 거리 & 고도
-        </button>
-      </div>
-
-      {/* Pagination Header Bar */}
-      <div className="trophy-pagination-bar">
-        <span>
-          검색 결과 <strong>{filteredTrophies.length.toLocaleString()}</strong>개 (페이지 {safePage} / {totalPages})
-        </span>
-
-        <div className="pagination-buttons">
+        {/* Category Filter Pills */}
+        <div className="trophy-filter-tabs">
           <button
-            className="btn btn-secondary btn-sm"
-            disabled={safePage <= 1}
-            onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+            className={`filter-btn ${selectedCat === "all" ? "active" : ""}`}
+            onClick={() => { setSelectedCat("all"); setCurrentPage(1); }}
           >
-            ◀ 이전
+            전체 보기 ({totalCount.toLocaleString()})
           </button>
-          <span className="page-number-text">{safePage} / {totalPages}</span>
           <button
-            className="btn btn-secondary btn-sm"
-            disabled={safePage >= totalPages}
-            onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+            className={`filter-btn ${selectedCat === "streak" ? "active" : ""}`}
+            onClick={() => { setSelectedCat("streak"); setCurrentPage(1); }}
           >
-            다음 ▶
+            🔥 연속 & 출석
           </button>
+          <button
+            className={`filter-btn ${selectedCat === "improvement" ? "active" : ""}`}
+            onClick={() => { setSelectedCat("improvement"); setCurrentPage(1); }}
+          >
+            ⏱️ 기록 단축
+          </button>
+          <button
+            className={`filter-btn ${selectedCat === "volume" ? "active" : ""}`}
+            onClick={() => { setSelectedCat("volume"); setCurrentPage(1); }}
+          >
+            🎯 완주 누적
+          </button>
+          <button
+            className={`filter-btn ${selectedCat === "rank" ? "active" : ""}`}
+            onClick={() => { setSelectedCat("rank"); setCurrentPage(1); }}
+          >
+            👑 순위 & PR
+          </button>
+          <button
+            className={`filter-btn ${selectedCat === "speed" ? "active" : ""}`}
+            onClick={() => { setSelectedCat("speed"); setCurrentPage(1); }}
+          >
+            🚄 속도 & 내리막
+          </button>
+          <button
+            className={`filter-btn ${selectedCat === "time" ? "active" : ""}`}
+            onClick={() => { setSelectedCat("time"); setCurrentPage(1); }}
+          >
+            🌙 시각 & 요일
+          </button>
+          <button
+            className={`filter-btn ${selectedCat === "special" ? "active" : ""}`}
+            onClick={() => { setSelectedCat("special"); setCurrentPage(1); }}
+          >
+            🏔️ 거리 & 고도
+          </button>
+        </div>
+
+        {/* Pagination Status & Controls Bar */}
+        <div className="trophy-pagination-bar">
+          <span>
+            검색 결과 <strong>{filteredTrophies.length.toLocaleString()}</strong>개 (페이지 {safePage} / {totalPages})
+          </span>
+
+          <div className="pagination-buttons">
+            <button
+              className="btn btn-secondary btn-sm"
+              disabled={safePage <= 1}
+              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+            >
+              ◀ 이전
+            </button>
+            <span className="page-number-text">{safePage} / {totalPages}</span>
+            <button
+              className="btn btn-secondary btn-sm"
+              disabled={safePage >= totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
+            >
+              다음 ▶
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Trophy Grid (With Golden Laurel Wreath Frames) */}
+      {/* 3. Refined 3-Column Responsive Grid */}
       <div className="trophy-grid">
         {paginatedTrophies.map((t) => {
           const unlockedInfo = unlockedMap.get(t.id);
@@ -206,13 +211,9 @@ export const TrophyRoom: React.FC<TrophyRoomProps> = ({ unlockedTrophies }) => {
             <div
               key={t.id}
               className={`trophy-room-card ${isUnlocked ? "unlocked" : "locked"}`}
-              style={{
-                borderColor: isUnlocked ? t.badgeColor : "#E6E6EB",
-                backgroundColor: isUnlocked ? t.badgeBg : "#FAFAFC",
-              }}
             >
               {isUnlocked ? (
-                <LaurelWreath size={62}>
+                <LaurelWreath size={54}>
                   <div
                     className="trophy-room-icon"
                     style={{
@@ -230,9 +231,9 @@ export const TrophyRoom: React.FC<TrophyRoomProps> = ({ unlockedTrophies }) => {
                 <div
                   className="trophy-room-icon"
                   style={{
-                    backgroundColor: "#E0E0E6",
+                    backgroundColor: "#EBEBEF",
                     color: "#A0A0AA",
-                    borderRadius: "16px",
+                    borderRadius: "14px",
                   }}
                 >
                   🔒
@@ -241,7 +242,7 @@ export const TrophyRoom: React.FC<TrophyRoomProps> = ({ unlockedTrophies }) => {
 
               <div className="trophy-room-details">
                 <div className="trophy-room-title-row">
-                  <span className="trophy-room-title" style={{ color: isUnlocked ? t.badgeColor : "#888" }}>
+                  <span className="trophy-room-title" style={{ color: isUnlocked ? t.badgeColor : "#555" }}>
                     {t.title}
                   </span>
                   <span className="trophy-room-tier" style={tierStyle}>
@@ -271,7 +272,7 @@ export const TrophyRoom: React.FC<TrophyRoomProps> = ({ unlockedTrophies }) => {
 
       {/* Bottom Pagination */}
       {totalPages > 1 && (
-        <div className="trophy-pagination-bar" style={{ marginTop: "16px" }}>
+        <div className="trophy-pagination-bar" style={{ marginTop: "8px", background: "#FFF", padding: "12px 18px", borderRadius: "12px", border: "1px solid #E6E6EB" }}>
           <span>페이지 {safePage} / {totalPages}</span>
           <div className="pagination-buttons">
             <button

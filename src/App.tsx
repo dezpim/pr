@@ -1297,7 +1297,7 @@ export default function App() {
           </div>
 
           <div className="header-actions">
-            {accessToken && activeView !== "editor" && (
+            {accessToken && activeView !== "editor" && activeView !== "trophies" && (
               <button
                 className="btn btn-primary btn-sm"
                 onClick={() => {
