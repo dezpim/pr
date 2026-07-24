@@ -542,11 +542,33 @@ export default function App() {
     setSelectedAttemptId(null);
   }, [selectedSegId]);
 
-  // Handle GPX file upload
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const [duplicateWarning, setDuplicateWarning] = useState<CatalogSegment | null>(null);
 
+  // Check if uploaded points match an existing segment in catalog (start/end within 150m)
+  const checkDuplicateSegment = (points: GPXPoint[]) => {
+    if (points.length < 2 || catalog.segments.length === 0) {
+      setDuplicateWarning(null);
+      return;
+    }
+    const startPt = points[0];
+    const endPt = points[points.length - 1];
+
+    for (const seg of catalog.segments) {
+      if (!seg.startCoords || !seg.endCoords) continue;
+
+      const startDist = calculateDistance(startPt.lat, startPt.lon, seg.startCoords[0], seg.startCoords[1]);
+      const endDist = calculateDistance(endPt.lat, endPt.lon, seg.endCoords[0], seg.endCoords[1]);
+
+      if (startDist <= 150 && endDist <= 150) {
+        setDuplicateWarning(seg);
+        return;
+      }
+    }
+    setDuplicateWarning(null);
+  };
+
+  // Shared GPX parser for editor (file input or drag-and-drop)
+  const processEditorGpxFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
@@ -571,11 +593,28 @@ export default function App() {
           initialNames[idx] = `${parsed.name} - 구간 ${idx + 1}`;
         });
         setClimbNames(initialNames);
+
+        // Check for existing duplicate segment
+        checkDuplicateSegment(parsed.points);
       } catch (err) {
         alert("GPX 파일을 읽는 중 오류가 발생했습니다.");
       }
     };
     reader.readAsText(file);
+  };
+
+  // Handle GPX file upload
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processEditorGpxFile(file);
+  };
+
+  // Handle GPX file drop in editor mode
+  const handleEditorDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) processEditorGpxFile(file);
   };
 
   const handleTrimChange = (start: number, end: number) => {
@@ -1053,14 +1092,48 @@ export default function App() {
               <div className="grid-col left-col">
                 <div className="card upload-card">
                   <h3>GPX 파일 업로드</h3>
-                  <div className="file-drop-zone">
+                  <div
+                    className={`file-drop-zone ${isDragging ? "dragging" : ""}`}
+                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={handleEditorDrop}
+                  >
                     <input type="file" accept=".gpx" onChange={handleFileUpload} id="gpx-file-input" />
                     <label htmlFor="gpx-file-input">
                       <span className="upload-icon">📂</span>
-                      <strong>GPX 주행 경로 파일 선택</strong>
+                      <strong>GPX 주행 경로 파일 선택</strong> 또는 드래그하여 업로드
                     </label>
                   </div>
                 </div>
+
+                {duplicateWarning && (
+                  <div className="card duplicate-warning-card" style={{ background: "#FFF8F0", border: "2px solid #FC6100", padding: "16px", borderRadius: "12px", marginTop: "16px" }}>
+                    <h4 style={{ color: "#FC6100", margin: "0 0 8px", display: "flex", alignItems: "center", gap: "6px" }}>
+                      ⚠️ 이미 유사한 구간이 등록되어 있습니다!
+                    </h4>
+                    <p style={{ fontSize: "13px", color: "#444", margin: "0 0 12px", lineHeight: "1.5" }}>
+                      업로드한 경로가 기존 <strong>"{duplicateWarning.name}"</strong> ({(duplicateWarning.distanceMeters / 1000).toFixed(2)}km) 구간과 출발/도착 지점이 거의 동일합니다 (150m 이내).
+                    </p>
+                    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                      <button
+                        className="btn btn-primary btn-xs"
+                        onClick={() => {
+                          setSelectedSegId(duplicateWarning.id);
+                          setActiveView("leaderboard");
+                        }}
+                        style={{ backgroundColor: "#FC6100", border: "none", fontWeight: "bold" }}
+                      >
+                        👉 기존 구간 리더보드로 이동
+                      </button>
+                      <button
+                        className="btn btn-secondary btn-xs"
+                        onClick={() => setDuplicateWarning(null)}
+                      >
+                        무시하고 신규 구간으로 계속 편집
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {gpxData && (
                   <div className="card map-card">

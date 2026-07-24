@@ -1373,6 +1373,7 @@ body {
   border-left: 4px solid var(--strava-orange, #fc6100);
 }
 
+.file-drop-zone.dragging,
 .ride-upload-zone.dragging {
   border: 2px dashed var(--strava-orange, #fc6100) !important;
   background-color: #FFF2EB !important;
