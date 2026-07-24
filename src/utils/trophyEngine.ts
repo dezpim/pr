@@ -281,10 +281,10 @@ const FIXED_SPECIAL_TROPHIES: TrophyDefinition[] = [
 
 // Helper to determine tier based on index / milestone
 function getTierByValue(val: number): TrophyTier {
-  if (val >= 1000) return "legendary";
-  if (val >= 500) return "diamond";
-  if (val >= 100) return "platinum";
-  if (val >= 30) return "gold";
+  if (val >= 2000) return "legendary";
+  if (val >= 1000) return "diamond";
+  if (val >= 300) return "platinum";
+  if (val >= 50) return "gold";
   if (val >= 10) return "silver";
   return "bronze";
 }
@@ -301,15 +301,15 @@ function getColorByTier(tier: TrophyTier): { color: string; bg: string } {
 }
 
 // ---------------------------------------------------------------------------
-// Massive Dynamic Trophy Builder (~3,200 Trophies Generator)
+// Massive Dynamic Trophy Builder (10,000+ Trophies Generator)
 // ---------------------------------------------------------------------------
 function buildMassiveTrophyRegistry(): TrophyDefinition[] {
   const trophies: TrophyDefinition[] = [...FIXED_SPECIAL_TROPHIES];
 
-  // 1. STREAK GENERATOR (1일 ~ 365일, 이후 10일 단위로 1000일까지: ~428개)
+  // 1. STREAK GENERATOR (1일 ~ 365일, 이후 10일 단위 3,650일까지: ~693개)
   const streakDays: number[] = [];
   for (let d = 1; d <= 365; d++) streakDays.push(d);
-  for (let d = 370; d <= 1000; d += 10) streakDays.push(d);
+  for (let d = 370; d <= 3650; d += 10) streakDays.push(d);
 
   streakDays.forEach(days => {
     const tier = getTierByValue(days);
@@ -320,7 +320,7 @@ function buildMassiveTrophyRegistry(): TrophyDefinition[] {
       title: days === 1 ? "🐣 연속 라이딩 1일차" : `🔥 연속 라이딩 ${days}일 달성!`,
       description: `${days}일 연속으로 운동 기록을 등록했습니다.`,
       praiseMessage: `${days}일 연속 라이딩 달성! 꾸준함으로 전설을 써나가는 위대한 라이더!`,
-      icon: days >= 100 ? "👑" : days >= 30 ? "🔥" : days >= 7 ? "⚡" : "🌱",
+      icon: days >= 1000 ? "👑" : days >= 100 ? "🔥" : days >= 7 ? "⚡" : "🌱",
       badgeColor: color,
       badgeBg: bg,
       tier,
@@ -342,11 +342,11 @@ function buildMassiveTrophyRegistry(): TrophyDefinition[] {
     });
   });
 
-  // 2. VOLUME / REPEAT GENERATOR (구간 완주 1회 ~ 50회, 55~500회(5단위), 510~2000회(10단위): ~290개)
+  // 2. VOLUME / REPEAT GENERATOR (1회 ~ 100회, 105~1000회(5단위), 1010~5000회(10단위): ~680개)
   const volMilestones: number[] = [];
-  for (let v = 1; v <= 50; v++) volMilestones.push(v);
-  for (let v = 55; v <= 500; v += 5) volMilestones.push(v);
-  for (let v = 510; v <= 2000; v += 10) volMilestones.push(v);
+  for (let v = 1; v <= 100; v++) volMilestones.push(v);
+  for (let v = 105; v <= 1000; v += 5) volMilestones.push(v);
+  for (let v = 1010; v <= 5000; v += 10) volMilestones.push(v);
 
   volMilestones.forEach(vol => {
     const tier = getTierByValue(vol);
@@ -357,7 +357,7 @@ function buildMassiveTrophyRegistry(): TrophyDefinition[] {
       title: `🎯 구간 ${vol}회 완주 달성`,
       description: `동일 구간을 총 ${vol}회 완주했습니다.`,
       praiseMessage: `동일 구간 ${vol}회 완주 달성! 이 구간의 완전한 지배자가 되셨습니다!`,
-      icon: vol >= 100 ? "🔱" : vol >= 50 ? "🏰" : vol >= 10 ? "🎯" : "🚴",
+      icon: vol >= 1000 ? "🔱" : vol >= 100 ? "🏰" : vol >= 10 ? "🎯" : "🚴",
       badgeColor: color,
       badgeBg: bg,
       tier,
@@ -365,11 +365,11 @@ function buildMassiveTrophyRegistry(): TrophyDefinition[] {
     });
   });
 
-  // 3. TIME IMPROVEMENT GENERATOR (1초~60초, 65초~600초(5초단위), 11분~60분(1분단위): ~217개)
+  // 3. TIME IMPROVEMENT GENERATOR (1초~120초, 125~1200초(5초단위), 21분~180분(1분단위): ~496개)
   const timeSecs: number[] = [];
-  for (let s = 1; s <= 60; s++) timeSecs.push(s);
-  for (let s = 65; s <= 600; s += 5) timeSecs.push(s);
-  for (let m = 11; m <= 60; m++) timeSecs.push(m * 60);
+  for (let s = 1; s <= 120; s++) timeSecs.push(s);
+  for (let s = 125; s <= 1200; s += 5) timeSecs.push(s);
+  for (let m = 21; m <= 180; m++) timeSecs.push(m * 60);
 
   timeSecs.forEach(sec => {
     const minStr = sec >= 60 ? `${Math.floor(sec / 60)}분 ${sec % 60 > 0 ? `${sec % 60}초` : ""}` : `${sec}초`;
@@ -381,8 +381,8 @@ function buildMassiveTrophyRegistry(): TrophyDefinition[] {
       category: "improvement",
       title: `⏱️ ${minStr} 단축 대기록`,
       description: `이전 개인 최고 기록 대비 ${minStr} 이상을 줄였습니다.`,
-      praiseMessage: `이전 기록보다무려 ${minStr} 단축! 폭발하는 한계 돌파 스피드!`,
-      icon: sec >= 300 ? "🌋" : sec >= 60 ? "📈" : sec >= 10 ? "⏱️" : "✂️",
+      praiseMessage: `이전 기록보다 무려 ${minStr} 단축! 폭발하는 한계 돌파 스피드!`,
+      icon: sec >= 600 ? "🌋" : sec >= 60 ? "📈" : sec >= 10 ? "⏱️" : "✂️",
       badgeColor: color,
       badgeBg: bg,
       tier,
@@ -394,31 +394,30 @@ function buildMassiveTrophyRegistry(): TrophyDefinition[] {
     });
   });
 
-  // 4. TOTAL DISTANCE MILESTONE GENERATOR (10km ~ 10,000km, 10km 단위: 1,000개!)
-  for (let dist = 10; dist <= 10000; dist += 10) {
-    const tier = getTierByValue(dist / 10);
+  // 4. TOTAL DISTANCE MILESTONE GENERATOR (1km ~ 5,000km, 1km 단위: 5,000개!)
+  for (let dist = 1; dist <= 5000; dist += 1) {
+    const tier = getTierByValue(dist);
     const { color, bg } = getColorByTier(tier);
     trophies.push({
       id: `gen_dist_${dist}km`,
       category: "special",
       title: `🏔️ 누적 주행 거리 ${dist}km 돌파!`,
-      description: `앱 이용 후 총 누적 주행 거리 ${dist}km를 달성했습니다.`,
+      description: `총 누적 주행 거리 ${dist}km 마일스톤을 달성했습니다.`,
       praiseMessage: `총 누적 거리 ${dist}km 돌파! 지구를 바퀴로 접어버릴 끝없는 지구력!`,
       icon: dist >= 1000 ? "🔱" : dist >= 500 ? "🏔️" : dist >= 100 ? "🛣️" : "🚴",
       badgeColor: color,
       badgeBg: bg,
       tier,
       evaluate: ({ allUserAttempts }) => {
-        // Evaluate rough total distance from segments or activity count
         const totalRides = allUserAttempts.length;
-        return totalRides * 5 >= dist; // Estimated threshold per activity
+        return totalRides * 5 >= dist;
       },
     });
   }
 
-  // 5. TOTAL ELEVATION MILESTONE GENERATOR (100m ~ 50,000m, 100m 단위: 500개!)
-  for (let ele = 100; ele <= 50000; ele += 100) {
-    const tier = getTierByValue(ele / 100);
+  // 5. TOTAL ELEVATION MILESTONE GENERATOR (10m ~ 30,000m, 10m 단위: 3,000개!)
+  for (let ele = 10; ele <= 30000; ele += 10) {
+    const tier = getTierByValue(ele / 10);
     const { color, bg } = getColorByTier(tier);
     trophies.push({
       id: `gen_ele_${ele}m`,
@@ -432,13 +431,13 @@ function buildMassiveTrophyRegistry(): TrophyDefinition[] {
       tier,
       evaluate: ({ allUserAttempts }) => {
         const totalRides = allUserAttempts.length;
-        return totalRides * 100 >= ele;
+        return totalRides * 50 >= ele;
       },
     });
   }
 
-  // 6. TOTAL RIDE ACTIVITIES COUNT GENERATOR (1번째 ~ 500번째 라이딩: 500개!)
-  for (let r = 1; r <= 500; r++) {
+  // 6. TOTAL RIDE ACTIVITIES COUNT GENERATOR (1번째 ~ 1,000번째 라이딩: 1,000개!)
+  for (let r = 1; r <= 1000; r++) {
     const tier = getTierByValue(r);
     const { color, bg } = getColorByTier(tier);
     trophies.push({
@@ -447,7 +446,7 @@ function buildMassiveTrophyRegistry(): TrophyDefinition[] {
       title: `🚴 통산 ${r}번째 라이딩 완료`,
       description: `총 ${r}번째 운동 주행 완주 기록 달성`,
       praiseMessage: `통산 ${r}번째 주행 완주! 매일매일 쌓아 올린 위대한 마일스톤!`,
-      icon: r >= 100 ? "🏆" : r >= 50 ? "🎯" : r >= 10 ? "🚴" : "🐣",
+      icon: r >= 500 ? "🏆" : r >= 100 ? "🎯" : r >= 10 ? "🚴" : "🐣",
       badgeColor: color,
       badgeBg: bg,
       tier,
@@ -458,7 +457,7 @@ function buildMassiveTrophyRegistry(): TrophyDefinition[] {
   return trophies;
 }
 
-// Build the ~3,200 Trophies Registry!
+// Build the 10,000+ Trophies Registry!
 export const TROPHY_REGISTRY: TrophyDefinition[] = buildMassiveTrophyRegistry();
 
 // Helper to look up a trophy by ID
