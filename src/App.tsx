@@ -1250,165 +1250,152 @@ export default function App() {
 
       {/* Main Content Area */}
       <div className="app-main-content" style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        {/* 1. Subtle, Clean Header (KO) */}
+        {/* Top Navigation Header */}
         <header className="app-header">
-          <div className="header-logo">
-            <span className="logo-icon">🏆</span>
-            <h1>개인 리더보드</h1>
+          <div className="header-page-title">
+            <h2>
+              {activeView === "directory" && "📂 전체 구간 목록"}
+              {activeView === "recent_records" && "🔥 최근 주행 기록 모아보기"}
+              {activeView === "editor" && "➕ 새 구간 등록 및 분석"}
+              {activeView === "leaderboard" && (activeSegment ? `⛰️ ${activeSegment.name}` : "📊 구간 상세 리더보드")}
+            </h2>
           </div>
 
-        <div className="header-actions">
-          {accessToken && activeView !== "editor" && (
-            <button
-              className="btn btn-primary btn-sm register-header-btn"
-              onClick={() => {
-                setGpxData(null);
-                setSegmentName("");
-                setDetectedClimbs([]);
-                setActiveView("editor");
-              }}
-            >
-              ➕ 구간 등록 (Register)
-            </button>
-          )}
-          {accessToken ? (
-            <div className="user-profile">
-              <span className="user-email">{userEmail || "연결됨"}</span>
-              <button className="btn btn-secondary btn-sm" onClick={logout}>
-                로그아웃
-              </button>
-            </div>
-          ) : (
-            <button className="btn btn-primary btn-sm" onClick={login}>
-              로그인
-            </button>
-          )}
-          {/* Notification Bell Center */}
-          {accessToken && (
-            <div className="notification-wrapper" style={{ position: "relative" }}>
+          <div className="header-actions">
+            {accessToken && activeView !== "editor" && (
               <button
-                className="btn-icon"
+                className="btn btn-primary btn-sm register-header-btn"
                 onClick={() => {
-                  setShowNotifications(!showNotifications);
-                  if (!showNotifications && unreadCount > 0) {
-                    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-                  }
+                  setGpxData(null);
+                  setSegmentName("");
+                  setDetectedClimbs([]);
+                  setActiveView("editor");
                 }}
-                title="주행 분석 알림 센터"
-                style={{ position: "relative", cursor: "pointer", fontSize: "16px", padding: "6px 10px" }}
               >
-                🔔
-                {unreadCount > 0 && (
-                  <span
+                ➕ 구간 등록
+              </button>
+            )}
+
+            {accessToken ? (
+              <div className="user-profile">
+                <span className="user-email-badge">● {userEmail || "구글 연동됨"}</span>
+                <button className="btn btn-secondary btn-sm" onClick={logout}>
+                  로그아웃
+                </button>
+              </div>
+            ) : (
+              <button className="btn btn-primary btn-sm" onClick={login}>
+                로그인
+              </button>
+            )}
+
+            {/* Notification Bell Center */}
+            {accessToken && (
+              <div className="notification-wrapper" style={{ position: "relative" }}>
+                <button
+                  className="btn-icon-nav"
+                  onClick={() => {
+                    setShowNotifications(!showNotifications);
+                    if (!showNotifications && unreadCount > 0) {
+                      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+                    }
+                  }}
+                  title="주행 분석 알림 센터"
+                >
+                  🔔
+                  {unreadCount > 0 && <span className="nav-badge">{unreadCount}</span>}
+                </button>
+
+                {/* Notification Popover Dropdown */}
+                {showNotifications && (
+                  <div
+                    className="notification-dropdown card"
                     style={{
                       position: "absolute",
-                      top: "-2px",
-                      right: "-2px",
-                      backgroundColor: "#FC6100",
-                      color: "#FFFFFF",
-                      borderRadius: "10px",
-                      padding: "2px 6px",
-                      fontSize: "10px",
-                      fontWeight: "bold",
-                      lineHeight: "1",
-                      border: "2px solid #FFF",
+                      top: "calc(100% + 8px)",
+                      right: 0,
+                      width: "360px",
+                      maxHeight: "420px",
+                      overflowY: "auto",
+                      zIndex: 1000,
+                      boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
+                      padding: "16px",
+                      borderRadius: "12px",
+                      backgroundColor: "#FFFFFF",
+                      border: "1px solid #E6E6EB",
+                      textAlign: "left",
                     }}
                   >
-                    {unreadCount}
-                  </span>
-                )}
-              </button>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", borderBottom: "1px solid #F0F0F5", paddingBottom: "8px" }}>
+                      <h4 style={{ margin: 0, fontSize: "14px", color: "#222", fontWeight: "bold" }}>🔔 주행 분석 알림 기록</h4>
+                      {notifications.length > 0 && (
+                        <button
+                          onClick={() => setNotifications([])}
+                          style={{ color: "#8E8E93", background: "none", border: "none", cursor: "pointer", fontSize: "11px" }}
+                        >
+                          전체 삭제
+                        </button>
+                      )}
+                    </div>
 
-              {/* Notification Popover Dropdown */}
-              {showNotifications && (
-                <div
-                  className="notification-dropdown card"
-                  style={{
-                    position: "absolute",
-                    top: "calc(100% + 8px)",
-                    right: 0,
-                    width: "360px",
-                    maxHeight: "420px",
-                    overflowY: "auto",
-                    zIndex: 1000,
-                    boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
-                    padding: "16px",
-                    borderRadius: "12px",
-                    backgroundColor: "#FFFFFF",
-                    border: "1px solid #E6E6EB",
-                    textAlign: "left",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", borderBottom: "1px solid #F0F0F5", paddingBottom: "8px" }}>
-                    <h4 style={{ margin: 0, fontSize: "14px", color: "#222", fontWeight: "bold" }}>🔔 주행 분석 알림 기록</h4>
-                    {notifications.length > 0 && (
-                      <button
-                        onClick={() => setNotifications([])}
-                        style={{ color: "#8E8E93", background: "none", border: "none", cursor: "pointer", fontSize: "11px" }}
-                      >
-                        전체 삭제
-                      </button>
+                    {notifications.length === 0 ? (
+                      <div style={{ textAlign: "center", color: "#8E8E93", padding: "24px 0", fontSize: "13px" }}>
+                        아직 저장된 주행 분석 알림이 없습니다.
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                        {notifications.map((n) => (
+                          <div
+                            key={n.id}
+                            style={{
+                              background: "#FFFBF7",
+                              padding: "12px",
+                              borderRadius: "8px",
+                              border: "1px solid #FFEADA",
+                              borderLeft: "4px solid #FC6100",
+                            }}
+                          >
+                            <div style={{ fontSize: "11px", color: "#8E8E93", marginBottom: "4px" }}>
+                              {n.date}
+                            </div>
+                            <div style={{ fontWeight: "bold", fontSize: "13px", color: "#222", marginBottom: "6px" }}>
+                              {n.title}
+                            </div>
+                            <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", color: "#444", display: "flex", flexDirection: "column", gap: "4px" }}>
+                              {n.matches.map((m, idx) => (
+                                <li
+                                  key={idx}
+                                  style={{ cursor: "pointer" }}
+                                  onClick={() => {
+                                    setSelectedSegId(m.segmentId);
+                                    setActiveView("leaderboard");
+                                    setShowNotifications(false);
+                                  }}
+                                >
+                                  <strong>{m.segmentName}</strong>:{" "}
+                                  {m.isPR ? (
+                                    <span style={{ color: "#FC6100", fontWeight: "bold" }}>
+                                      👑 1등 (개인 최고 기록!) ({formatMsToTime(m.durationMs)})
+                                    </span>
+                                  ) : (
+                                    <span>{m.rank}등 ({formatMsToTime(m.durationMs)})</span>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
-
-                  {notifications.length === 0 ? (
-                    <div style={{ textAlign: "center", color: "#8E8E93", padding: "24px 0", fontSize: "13px" }}>
-                      아직 저장된 주행 분석 알림이 없습니다.
-                    </div>
-                  ) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                      {notifications.map((n) => (
-                        <div
-                          key={n.id}
-                          style={{
-                            background: "#FFFBF7",
-                            padding: "12px",
-                            borderRadius: "8px",
-                            border: "1px solid #FFEADA",
-                            borderLeft: "4px solid #FC6100",
-                          }}
-                        >
-                          <div style={{ fontSize: "11px", color: "#8E8E93", marginBottom: "4px" }}>
-                            {n.date}
-                          </div>
-                          <div style={{ fontWeight: "bold", fontSize: "13px", color: "#222", marginBottom: "6px" }}>
-                            {n.title}
-                          </div>
-                          <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", color: "#444", display: "flex", flexDirection: "column", gap: "4px" }}>
-                            {n.matches.map((m, idx) => (
-                              <li
-                                key={idx}
-                                style={{ cursor: "pointer" }}
-                                onClick={() => {
-                                  setSelectedSegId(m.segmentId);
-                                  setActiveView("leaderboard");
-                                  setShowNotifications(false);
-                                }}
-                              >
-                                <strong>{m.segmentName}</strong>:{" "}
-                                {m.isPR ? (
-                                  <span style={{ color: "#FC6100", fontWeight: "bold" }}>
-                                    👑 1등 (개인 최고 기록!) ({formatMsToTime(m.durationMs)})
-                                  </span>
-                                ) : (
-                                  <span>{m.rank}등 ({formatMsToTime(m.durationMs)})</span>
-                                )}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-          <button className="btn-icon" onClick={() => setShowSettings(!showSettings)} title="설정">
-            ⚙️
-          </button>
-        </div>
-      </header>
+                )}
+              </div>
+            )}
+            <button className="btn-icon-nav" onClick={() => setShowSettings(!showSettings)} title="설정">
+              ⚙️
+            </button>
+          </div>
+        </header>
 
       {/* 2. Main Content */}
       <main className="app-main">
