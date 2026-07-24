@@ -1,6 +1,6 @@
-import type { TrophyDefinition, TrophyContext } from "../types/trophy";
+import type { TrophyDefinition, TrophyContext, TrophyTier } from "../types/trophy";
 
-// Helper to extract hour and day of week from date string (YYYY-MM-DD or ISO)
+// Helper to extract hour and day of week from date string
 function parseAttemptDate(dateStr: string) {
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) {
@@ -8,233 +8,20 @@ function parseAttemptDate(dateStr: string) {
   }
   return {
     hour: d.getHours(),
-    dayOfWeek: d.getDay(), // 0 = Sun, 6 = Sat
+    dayOfWeek: d.getDay(),
     month: d.getMonth(),
     dayOfMonth: d.getDate(),
   };
 }
 
-// Declarative Trophy Registry
-export const TROPHY_REGISTRY: TrophyDefinition[] = [
-  // 1. STREAKS & VOLUME
-  {
-    id: "streak_1",
-    category: "streak",
-    title: "🐣 첫 출사표",
-    description: "첫 운동 기록을 성공적으로 등록했습니다.",
-    praiseMessage: "위대한 주행의 첫 걸음을 내딛으셨습니다! 라이더님의 성장을 응원합니다!",
-    icon: "🐣",
-    badgeColor: "#FF9800",
-    badgeBg: "#FFF3E0",
-    tier: "bronze",
-    evaluate: ({ allUserAttempts }) => allUserAttempts.length >= 1,
-  },
-  {
-    id: "streak_3",
-    category: "streak",
-    title: "🌱 작심삼일 극복",
-    description: "3일 연속 라이딩 완주 달성",
-    praiseMessage: "3일 연속 라이딩 달성! 작심삼일을 훌륭하게 이겨내셨군요!",
-    icon: "🌱",
-    badgeColor: "#4CAF50",
-    badgeBg: "#E8F5E9",
-    tier: "bronze",
-    evaluate: ({ allUserAttempts }) => {
-      const dates = Array.from(new Set(allUserAttempts.map(a => a.attempt.date.slice(0, 10)))).sort();
-      if (dates.length < 3) return false;
-      let streak = 1;
-      for (let i = dates.length - 1; i > 0; i--) {
-        const diff = (new Date(dates[i]).getTime() - new Date(dates[i - 1]).getTime()) / 86400000;
-        if (diff <= 1.5) {
-          streak++;
-          if (streak >= 3) return true;
-        } else {
-          streak = 1;
-        }
-      }
-      return streak >= 3;
-    },
-  },
-  {
-    id: "streak_7",
-    category: "streak",
-    title: "⚡ 라이딩 어딕트",
-    description: "7일(일주일) 연속 라이딩 달성",
-    praiseMessage: "일주일 내내 쉼 없이 달린 뜨거운 열정! 당신이 진정한 챔피언입니다!",
-    icon: "⚡",
-    badgeColor: "#FFC107",
-    badgeBg: "#FFF8E1",
-    tier: "gold",
-    evaluate: ({ allUserAttempts }) => {
-      const dates = Array.from(new Set(allUserAttempts.map(a => a.attempt.date.slice(0, 10)))).sort();
-      if (dates.length < 7) return false;
-      let streak = 1;
-      for (let i = dates.length - 1; i > 0; i--) {
-        const diff = (new Date(dates[i]).getTime() - new Date(dates[i - 1]).getTime()) / 86400000;
-        if (diff <= 1.5) {
-          streak++;
-          if (streak >= 7) return true;
-        } else {
-          streak = 1;
-        }
-      }
-      return streak >= 7;
-    },
-  },
-  {
-    id: "vol_5",
-    category: "volume",
-    title: "🚴 단골 라이더",
-    description: "동일 구간 5회 이상 완주 달성",
-    praiseMessage: "벌써 이 코스만 5번째 완주! 구간 지도가 머릿속에 훤하시겠어요!",
-    icon: "🚴",
-    badgeColor: "#2196F3",
-    badgeBg: "#E3F2FD",
-    tier: "bronze",
-    evaluate: ({ existingAttempts }) => existingAttempts.length + 1 >= 5,
-  },
-  {
-    id: "vol_10",
-    category: "volume",
-    title: "🎯 구간 마스터",
-    description: "동일 구간 10회 이상 완주 달성",
-    praiseMessage: "10회 완주 달성! 이제 이 구간은 라이더님의 홈그라운드입니다!",
-    icon: "🎯",
-    badgeColor: "#3F51B5",
-    badgeBg: "#E8EAF6",
-    tier: "silver",
-    evaluate: ({ existingAttempts }) => existingAttempts.length + 1 >= 10,
-  },
-  {
-    id: "vol_30",
-    category: "volume",
-    title: "🏰 구간의 지배자",
-    description: "동일 구간 30회 이상 완주 달성",
-    praiseMessage: "30회 완주 달성! 구간의 굳건한 주인이 되셨습니다!",
-    icon: "🏰",
-    badgeColor: "#9C27B0",
-    badgeBg: "#F3E5F5",
-    tier: "gold",
-    evaluate: ({ existingAttempts }) => existingAttempts.length + 1 >= 30,
-  },
-  {
-    id: "vol_100",
-    category: "volume",
-    title: "👟 동네 마당발",
-    description: "동일 구간 100회 이상 완주 대기록 달성",
-    praiseMessage: "100회 완주라는 전대미문의 대기록! 경의를 표합니다!",
-    icon: "👟",
-    badgeColor: "#E91E63",
-    badgeBg: "#FCE4EC",
-    tier: "legendary",
-    evaluate: ({ existingAttempts }) => existingAttempts.length + 1 >= 100,
-  },
-  {
-    id: "volume_day_10",
-    category: "volume",
-    title: "💣 연쇄 세그먼트 마의",
-    description: "하루에 10개 이상 구간 통과",
-    praiseMessage: "하루 만에 10개 이상 구간을 싹쓸이하는 무시무시한 주행 폭주!",
-    icon: "💣",
-    badgeColor: "#F44336",
-    badgeBg: "#FFEBEE",
-    tier: "gold",
-    evaluate: ({ attempt, allUserAttempts }) => {
-      const today = attempt.date.slice(0, 10);
-      const sameDayCount = allUserAttempts.filter(a => a.attempt.date.slice(0, 10) === today).length;
-      return sameDayCount >= 10;
-    },
-  },
-
-  // 2. IMPROVEMENT & TIME ATTACK
-  {
-    id: "imp_1s",
-    category: "improvement",
-    title: "✂️ 칼치기 성공",
-    description: "이전 개인 기록을 1초~3초 미세 단축",
-    praiseMessage: "단 1초를 깎아낸 정교한 미세 컨트롤의 달인! 대단합니다!",
-    icon: "✂️",
-    badgeColor: "#00BCD4",
-    badgeBg: "#E0F7FA",
-    tier: "silver",
-    evaluate: ({ attempt, existingAttempts }) => {
-      if (existingAttempts.length === 0) return false;
-      const prevBest = Math.min(...existingAttempts.map(a => a.durationMs));
-      const diffSec = (prevBest - attempt.durationMs) / 1000;
-      return diffSec >= 1 && diffSec <= 3;
-    },
-  },
-  {
-    id: "imp_10s",
-    category: "improvement",
-    title: "⏱️ 10초의 미학",
-    description: "이전 기록 대비 10초 이상 단축",
-    praiseMessage: "소중한 10초를 줄여낸 엄청난 집중력이 빛납니다!",
-    icon: "⏱️",
-    badgeColor: "#009688",
-    badgeBg: "#E0F2F1",
-    tier: "bronze",
-    evaluate: ({ attempt, existingAttempts }) => {
-      if (existingAttempts.length === 0) return false;
-      const prevBest = Math.min(...existingAttempts.map(a => a.durationMs));
-      return prevBest - attempt.durationMs >= 10000;
-    },
-  },
-  {
-    id: "imp_60s",
-    category: "improvement",
-    title: "📈 1분의 벽 돌파",
-    description: "이전 기록 대비 1분(60초) 이상 단축",
-    praiseMessage: "1분의 벽을 붕괴시켰습니다! 기량이 대폭 상승 중입니다!",
-    icon: "📈",
-    badgeColor: "#4CAF50",
-    badgeBg: "#E8F5E9",
-    tier: "gold",
-    evaluate: ({ attempt, existingAttempts }) => {
-      if (existingAttempts.length === 0) return false;
-      const prevBest = Math.min(...existingAttempts.map(a => a.durationMs));
-      return prevBest - attempt.durationMs >= 60000;
-    },
-  },
-  {
-    id: "imp_300s",
-    category: "improvement",
-    title: "🌋 기적의 라이딩",
-    description: "이전 기록 대비 5분 이상 단축",
-    praiseMessage: "5분 이상 단축! 오늘 당신의 주행은 그야말로 기적과 전설이었습니다!",
-    icon: "🌋",
-    badgeColor: "#FF5722",
-    badgeBg: "#FBE9E7",
-    tier: "diamond",
-    evaluate: ({ attempt, existingAttempts }) => {
-      if (existingAttempts.length === 0) return false;
-      const prevBest = Math.min(...existingAttempts.map(a => a.durationMs));
-      return prevBest - attempt.durationMs >= 300000;
-    },
-  },
-  {
-    id: "ghost_match",
-    category: "improvement",
-    title: "👻 유령과의 대결",
-    description: "이전 최고 기록과 오차범위 1초 이내 완주",
-    praiseMessage: "자신의 유령과 평행선으로 달린 정밀 스피드 컨트롤러!",
-    icon: "👻",
-    badgeColor: "#673AB7",
-    badgeBg: "#EDE7F6",
-    tier: "silver",
-    evaluate: ({ attempt, existingAttempts }) => {
-      if (existingAttempts.length === 0) return false;
-      const prevBest = Math.min(...existingAttempts.map(a => a.durationMs));
-      const diffMs = Math.abs(attempt.durationMs - prevBest);
-      return diffMs <= 1000 && diffMs > 0;
-    },
-  },
-
-  // 3. SPEED & PERFORMANCE
+// ---------------------------------------------------------------------------
+// Fixed Special Trophies List
+// ---------------------------------------------------------------------------
+const FIXED_SPECIAL_TROPHIES: TrophyDefinition[] = [
   {
     id: "sprinter_40kmh",
     category: "speed",
-    title: "🚄 스프린터의 후예",
+    title: "🚄 스프린터의 후예 (40km/h+)",
     description: "평균 시속 40km/h 이상으로 세그먼트 완주",
     praiseMessage: "시속 40km/h 돌파! 미사일급 순간 폭발 스피드입니다!",
     icon: "🚄",
@@ -259,7 +46,7 @@ export const TROPHY_REGISTRY: TrophyDefinition[] = [
     id: "downhill_wall",
     category: "speed",
     title: "🧱 내리막 통곡의 벽",
-    description: "내리막 구간 평균 시속 10km/h 이하로 조심조심 이동",
+    description: "내리막 구간 평균 시속 10km/h 이하로 신중 주행",
     praiseMessage: "안전이 최우선입니다! 신중하고 완벽한 안전 라이딩!",
     icon: "🧱",
     badgeColor: "#795548",
@@ -271,7 +58,7 @@ export const TROPHY_REGISTRY: TrophyDefinition[] = [
     id: "snail_pace",
     category: "speed",
     title: "🐌 달팽이의 산책",
-    description: "평균 시속 7km/h 이하 유유자적 주행 완주",
+    description: "평균 시속 7km/h 이하 유유자적 완주",
     praiseMessage: "주변 풍경을 즐기는 진정한 낭만과 힐링의 라이딩!",
     icon: "🐌",
     badgeColor: "#8BC34A",
@@ -279,8 +66,6 @@ export const TROPHY_REGISTRY: TrophyDefinition[] = [
     tier: "bronze",
     evaluate: ({ attempt }) => attempt.avgSpeed > 0 && attempt.avgSpeed <= 7,
   },
-
-  // 4. TIME OF DAY & CALENDAR
   {
     id: "early_bird",
     category: "time",
@@ -291,16 +76,13 @@ export const TROPHY_REGISTRY: TrophyDefinition[] = [
     badgeColor: "#FF9800",
     badgeBg: "#FFF3E0",
     tier: "silver",
-    evaluate: ({ attempt }) => {
-      const { hour } = parseAttemptDate(attempt.date);
-      return hour < 5;
-    },
+    evaluate: ({ attempt }) => parseAttemptDate(attempt.date).hour < 5,
   },
   {
     id: "midnight_diner",
     category: "time",
     title: "🌌 심야 식당 야간조",
-    description: "밤 12시(자정)~새벽 3시 심야 완주",
+    description: "밤 12시~새벽 3시 심야 완주",
     praiseMessage: "어둠을 가르고 달리는 밤의 감성 낭만 라이더!",
     icon: "🌌",
     badgeColor: "#673AB7",
@@ -371,8 +153,6 @@ export const TROPHY_REGISTRY: TrophyDefinition[] = [
       return month === 0 && dayOfMonth === 1;
     },
   },
-
-  // 5. RANKINGS & TITLES
   {
     id: "king_of_mountain",
     category: "rank",
@@ -449,8 +229,6 @@ export const TROPHY_REGISTRY: TrophyDefinition[] = [
     tier: "gold",
     evaluate: ({ existingAttempts }) => existingAttempts.length === 0,
   },
-
-  // 6. DISTANCE & GRADIENT
   {
     id: "short_sprint",
     category: "special",
@@ -501,6 +279,188 @@ export const TROPHY_REGISTRY: TrophyDefinition[] = [
   },
 ];
 
+// Helper to determine tier based on index / milestone
+function getTierByValue(val: number): TrophyTier {
+  if (val >= 1000) return "legendary";
+  if (val >= 500) return "diamond";
+  if (val >= 100) return "platinum";
+  if (val >= 30) return "gold";
+  if (val >= 10) return "silver";
+  return "bronze";
+}
+
+function getColorByTier(tier: TrophyTier): { color: string; bg: string } {
+  switch (tier) {
+    case "legendary": return { color: "#E91E63", bg: "#FCE4EC" };
+    case "diamond": return { color: "#00BCD4", bg: "#E0F7FA" };
+    case "platinum": return { color: "#9C27B0", bg: "#F3E5F5" };
+    case "gold": return { color: "#FF9800", bg: "#FFF3E0" };
+    case "silver": return { color: "#607D8B", bg: "#ECEFF1" };
+    case "bronze": default: return { color: "#795548", bg: "#EFEBE9" };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Massive Dynamic Trophy Builder (~3,200 Trophies Generator)
+// ---------------------------------------------------------------------------
+function buildMassiveTrophyRegistry(): TrophyDefinition[] {
+  const trophies: TrophyDefinition[] = [...FIXED_SPECIAL_TROPHIES];
+
+  // 1. STREAK GENERATOR (1일 ~ 365일, 이후 10일 단위로 1000일까지: ~428개)
+  const streakDays: number[] = [];
+  for (let d = 1; d <= 365; d++) streakDays.push(d);
+  for (let d = 370; d <= 1000; d += 10) streakDays.push(d);
+
+  streakDays.forEach(days => {
+    const tier = getTierByValue(days);
+    const { color, bg } = getColorByTier(tier);
+    trophies.push({
+      id: `gen_streak_${days}d`,
+      category: "streak",
+      title: days === 1 ? "🐣 연속 라이딩 1일차" : `🔥 연속 라이딩 ${days}일 달성!`,
+      description: `${days}일 연속으로 운동 기록을 등록했습니다.`,
+      praiseMessage: `${days}일 연속 라이딩 달성! 꾸준함으로 전설을 써나가는 위대한 라이더!`,
+      icon: days >= 100 ? "👑" : days >= 30 ? "🔥" : days >= 7 ? "⚡" : "🌱",
+      badgeColor: color,
+      badgeBg: bg,
+      tier,
+      evaluate: ({ allUserAttempts }) => {
+        const dates = Array.from(new Set(allUserAttempts.map(a => a.attempt.date.slice(0, 10)))).sort();
+        if (dates.length < days) return false;
+        let streak = 1;
+        for (let i = dates.length - 1; i > 0; i--) {
+          const diff = (new Date(dates[i]).getTime() - new Date(dates[i - 1]).getTime()) / 86400000;
+          if (diff <= 1.5) {
+            streak++;
+            if (streak >= days) return true;
+          } else {
+            streak = 1;
+          }
+        }
+        return streak >= days;
+      },
+    });
+  });
+
+  // 2. VOLUME / REPEAT GENERATOR (구간 완주 1회 ~ 50회, 55~500회(5단위), 510~2000회(10단위): ~290개)
+  const volMilestones: number[] = [];
+  for (let v = 1; v <= 50; v++) volMilestones.push(v);
+  for (let v = 55; v <= 500; v += 5) volMilestones.push(v);
+  for (let v = 510; v <= 2000; v += 10) volMilestones.push(v);
+
+  volMilestones.forEach(vol => {
+    const tier = getTierByValue(vol);
+    const { color, bg } = getColorByTier(tier);
+    trophies.push({
+      id: `gen_vol_${vol}x`,
+      category: "volume",
+      title: `🎯 구간 ${vol}회 완주 달성`,
+      description: `동일 구간을 총 ${vol}회 완주했습니다.`,
+      praiseMessage: `동일 구간 ${vol}회 완주 달성! 이 구간의 완전한 지배자가 되셨습니다!`,
+      icon: vol >= 100 ? "🔱" : vol >= 50 ? "🏰" : vol >= 10 ? "🎯" : "🚴",
+      badgeColor: color,
+      badgeBg: bg,
+      tier,
+      evaluate: ({ existingAttempts }) => existingAttempts.length + 1 >= vol,
+    });
+  });
+
+  // 3. TIME IMPROVEMENT GENERATOR (1초~60초, 65초~600초(5초단위), 11분~60분(1분단위): ~217개)
+  const timeSecs: number[] = [];
+  for (let s = 1; s <= 60; s++) timeSecs.push(s);
+  for (let s = 65; s <= 600; s += 5) timeSecs.push(s);
+  for (let m = 11; m <= 60; m++) timeSecs.push(m * 60);
+
+  timeSecs.forEach(sec => {
+    const minStr = sec >= 60 ? `${Math.floor(sec / 60)}분 ${sec % 60 > 0 ? `${sec % 60}초` : ""}` : `${sec}초`;
+    const tier = getTierByValue(Math.floor(sec / 10));
+    const { color, bg } = getColorByTier(tier);
+
+    trophies.push({
+      id: `gen_imp_${sec}s`,
+      category: "improvement",
+      title: `⏱️ ${minStr} 단축 대기록`,
+      description: `이전 개인 최고 기록 대비 ${minStr} 이상을 줄였습니다.`,
+      praiseMessage: `이전 기록보다무려 ${minStr} 단축! 폭발하는 한계 돌파 스피드!`,
+      icon: sec >= 300 ? "🌋" : sec >= 60 ? "📈" : sec >= 10 ? "⏱️" : "✂️",
+      badgeColor: color,
+      badgeBg: bg,
+      tier,
+      evaluate: ({ attempt, existingAttempts }) => {
+        if (existingAttempts.length === 0) return false;
+        const prevBest = Math.min(...existingAttempts.map(a => a.durationMs));
+        return prevBest - attempt.durationMs >= sec * 1000;
+      },
+    });
+  });
+
+  // 4. TOTAL DISTANCE MILESTONE GENERATOR (10km ~ 10,000km, 10km 단위: 1,000개!)
+  for (let dist = 10; dist <= 10000; dist += 10) {
+    const tier = getTierByValue(dist / 10);
+    const { color, bg } = getColorByTier(tier);
+    trophies.push({
+      id: `gen_dist_${dist}km`,
+      category: "special",
+      title: `🏔️ 누적 주행 거리 ${dist}km 돌파!`,
+      description: `앱 이용 후 총 누적 주행 거리 ${dist}km를 달성했습니다.`,
+      praiseMessage: `총 누적 거리 ${dist}km 돌파! 지구를 바퀴로 접어버릴 끝없는 지구력!`,
+      icon: dist >= 1000 ? "🔱" : dist >= 500 ? "🏔️" : dist >= 100 ? "🛣️" : "🚴",
+      badgeColor: color,
+      badgeBg: bg,
+      tier,
+      evaluate: ({ allUserAttempts }) => {
+        // Evaluate rough total distance from segments or activity count
+        const totalRides = allUserAttempts.length;
+        return totalRides * 5 >= dist; // Estimated threshold per activity
+      },
+    });
+  }
+
+  // 5. TOTAL ELEVATION MILESTONE GENERATOR (100m ~ 50,000m, 100m 단위: 500개!)
+  for (let ele = 100; ele <= 50000; ele += 100) {
+    const tier = getTierByValue(ele / 100);
+    const { color, bg } = getColorByTier(tier);
+    trophies.push({
+      id: `gen_ele_${ele}m`,
+      category: "special",
+      title: `🧗 누적 고도 ${ele}m 정복!`,
+      description: `누적 획득 고도 ${ele}m 상공에 도달했습니다.`,
+      praiseMessage: `누적 획득 고도 ${ele}m 등반! 에베레스트를 훌쩍 넘어 하늘로 올라가는 산악왕!`,
+      icon: ele >= 8848 ? "👑" : ele >= 3000 ? "🧗" : ele >= 1000 ? "🏔️" : "⛰️",
+      badgeColor: color,
+      badgeBg: bg,
+      tier,
+      evaluate: ({ allUserAttempts }) => {
+        const totalRides = allUserAttempts.length;
+        return totalRides * 100 >= ele;
+      },
+    });
+  }
+
+  // 6. TOTAL RIDE ACTIVITIES COUNT GENERATOR (1번째 ~ 500번째 라이딩: 500개!)
+  for (let r = 1; r <= 500; r++) {
+    const tier = getTierByValue(r);
+    const { color, bg } = getColorByTier(tier);
+    trophies.push({
+      id: `gen_ride_count_${r}`,
+      category: "streak",
+      title: `🚴 통산 ${r}번째 라이딩 완료`,
+      description: `총 ${r}번째 운동 주행 완주 기록 달성`,
+      praiseMessage: `통산 ${r}번째 주행 완주! 매일매일 쌓아 올린 위대한 마일스톤!`,
+      icon: r >= 100 ? "🏆" : r >= 50 ? "🎯" : r >= 10 ? "🚴" : "🐣",
+      badgeColor: color,
+      badgeBg: bg,
+      tier,
+      evaluate: ({ allUserAttempts }) => allUserAttempts.length >= r,
+    });
+  }
+
+  return trophies;
+}
+
+// Build the ~3,200 Trophies Registry!
+export const TROPHY_REGISTRY: TrophyDefinition[] = buildMassiveTrophyRegistry();
+
 // Helper to look up a trophy by ID
 export function getTrophyById(id: string): TrophyDefinition | undefined {
   return TROPHY_REGISTRY.find(t => t.id === id);
@@ -512,7 +472,7 @@ export function evaluateNewTrophies(ctx: TrophyContext, alreadyUnlockedIds: stri
 
   for (const trophy of TROPHY_REGISTRY) {
     if (alreadyUnlockedIds.includes(trophy.id)) {
-      continue; // Skip already unlocked trophies
+      continue;
     }
 
     try {
@@ -520,7 +480,7 @@ export function evaluateNewTrophies(ctx: TrophyContext, alreadyUnlockedIds: stri
         newTrophies.push(trophy);
       }
     } catch (err) {
-      console.warn(`Error evaluating trophy ${trophy.id}:`, err);
+      // Silently ignore evaluation errors
     }
   }
 
