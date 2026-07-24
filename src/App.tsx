@@ -8,6 +8,10 @@ import type { CatalogSegment, CloudAttempt } from "./hooks/useGoogleDrive";
 import { MapView } from "./components/MapView";
 import { ChartView } from "./components/ChartView";
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip, ReferenceArea } from "recharts";
+import type { UnlockedTrophy, TrophyDefinition } from "./types/trophy";
+import { evaluateNewTrophies } from "./utils/trophyEngine";
+import { TrophyModal } from "./components/TrophyModal";
+import { TrophyRoom } from "./components/TrophyRoom";
 
 export interface AppNotification {
   id: string;
@@ -455,8 +459,23 @@ export default function App() {
     cleanOrphanedFiles,
   } = useGoogleDrive();
 
-  // Navigation views: 'directory' | 'leaderboard' | 'editor' | 'recent_records'
-  const [activeView, setActiveView] = useState<"directory" | "leaderboard" | "editor" | "recent_records">("directory");
+  // Navigation views: 'directory' | 'leaderboard' | 'editor' | 'recent_records' | 'trophies'
+  const [activeView, setActiveView] = useState<"directory" | "leaderboard" | "editor" | "recent_records" | "trophies">("directory");
+
+  // Trophy System states
+  const [unlockedTrophies, setUnlockedTrophies] = useState<UnlockedTrophy[]>(() => {
+    try {
+      const saved = localStorage.getItem("gdrive_unlocked_trophies");
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [newTrophiesModalData, setNewTrophiesModalData] = useState<TrophyDefinition[]>([]);
+
+  useEffect(() => {
+    localStorage.setItem("gdrive_unlocked_trophies", JSON.stringify(unlockedTrophies));
+  }, [unlockedTrophies]);
 
   // Filter Period: 'all' | 'year' | 'days30'
   const [filterPeriod, setFilterPeriod] = useState<"all" | "year" | "days30">("all");
@@ -859,6 +878,44 @@ export default function App() {
           };
           setNotifications((prev) => [newNotif, ...prev].slice(0, 30));
 
+          // Evaluate Trophies for this upload session
+          const newlyUnlocked: TrophyDefinition[] = [];
+          const existingUnlockedIds = unlockedTrophies.map((u) => u.trophyId);
+          const allUserAttempts = getAllRecentRideAttempts();
+
+          for (const match of matchedAttempts) {
+            const seg = catalog.segments.find((s) => s.id === match.id);
+            if (!seg) continue;
+            const existingSegAttempts = rankings[match.id] || [];
+
+            const ctx = {
+              segment: seg,
+              attempt: { id: "temp", ...match.attemptData },
+              existingAttempts: existingSegAttempts,
+              allUserAttempts,
+            };
+
+            const unlockedForMatch = evaluateNewTrophies(ctx, [...existingUnlockedIds, ...newlyUnlocked.map((t) => t.id)]);
+            for (const t of unlockedForMatch) {
+              newlyUnlocked.push(t);
+              setUnlockedTrophies((prev) => [
+                ...prev,
+                {
+                  id: `${t.id}_${Date.now()}_${Math.random()}`,
+                  trophyId: t.id,
+                  unlockedAt: new Date().toLocaleDateString("ko-KR"),
+                  segmentId: seg.id,
+                  segmentName: seg.name,
+                  attemptId: Date.now().toString(),
+                },
+              ]);
+            }
+          }
+
+          if (newlyUnlocked.length > 0) {
+            setNewTrophiesModalData(newlyUnlocked);
+          }
+
           let msg = `🎉 주행 기록 분석 및 등록 완료!\n\n📍 분석 및 매칭된 구간 순위 결과:\n${matchedLines.join("\n")}`;
           if (duplicateCount > 0) {
             msg += `\n\n(ℹ️ 이미 등록된 중복 기록 ${duplicateCount}개는 자동으로 제외되었습니다.)`;
@@ -1195,6 +1252,17 @@ export default function App() {
               <span className="sidebar-item-text">새 구간 등록</span>
             </button>
           )}
+
+          <button
+            className={`sidebar-item ${activeView === "trophies" ? "active" : ""}`}
+            onClick={() => setActiveView("trophies")}
+          >
+            <span className="sidebar-item-icon">🎖️</span>
+            <span className="sidebar-item-text">나의 훈장 수집함</span>
+            {unlockedTrophies.length > 0 && (
+              <span className="sidebar-badge">{unlockedTrophies.length}</span>
+            )}
+          </button>
         </nav>
 
         {/* Sidebar Footer User Info */}
@@ -1223,6 +1291,7 @@ export default function App() {
               {activeView === "directory" && "📂 전체 구간 목록 (디렉토리)"}
               {activeView === "recent_records" && "🔥 최근 주행 기록 전체 보기"}
               {activeView === "editor" && "➕ 새 구간 등록 및 분석"}
+              {activeView === "trophies" && "🎖️ 나의 훈장 & 트로피 수집함"}
               {activeView === "leaderboard" && (activeSegment ? `⛰️ ${activeSegment.name}` : "📊 구간 상세 리더보드")}
             </h2>
           </div>
@@ -2220,8 +2289,24 @@ export default function App() {
             )}
           </div>
         )}
+
+        {activeView === "trophies" && (
+          <TrophyRoom unlockedTrophies={unlockedTrophies} />
+        )}
       </main>
     </div>
+
+    {/* Celebration Modal Popup ("훈장 붙듯 주르륵!") */}
+    {newTrophiesModalData.length > 0 && (
+      <TrophyModal
+        trophies={newTrophiesModalData}
+        onClose={() => setNewTrophiesModalData([])}
+        onViewTrophies={() => {
+          setNewTrophiesModalData([]);
+          setActiveView("trophies");
+        }}
+      />
+    )}
   </div>
   );
 }
