@@ -445,22 +445,35 @@ export function useGoogleDrive() {
     }
   };
 
-  // Add attempt to cloud
+  // Add attempt to cloud (with timestamp & duration deduplication)
   const addAttemptToCloud = async (
     segmentId: string,
     attempt: Omit<CloudAttempt, "id">
-  ): Promise<boolean> => {
+  ): Promise<"added" | "duplicate" | "error"> => {
+    const currentAttempts = rankings[segmentId] || [];
+
+    // Check for duplicate attempt (same date and duration within 1000ms)
+    const isDuplicate = currentAttempts.some(
+      (existing) =>
+        existing.date === attempt.date &&
+        Math.abs(existing.durationMs - attempt.durationMs) < 1000
+    );
+
+    if (isDuplicate) {
+      return "duplicate";
+    }
+
     const newAttempt: CloudAttempt = {
       id: Date.now().toString(),
       ...attempt,
     };
-    const currentAttempts = rankings[segmentId] || [];
     const updatedAttempts = [...currentAttempts, newAttempt];
     const updatedRankings = {
       ...rankings,
       [segmentId]: updatedAttempts,
     };
-    return await saveRankingsToDrive(updatedRankings);
+    const saved = await saveRankingsToDrive(updatedRankings);
+    return saved ? "added" : "error";
   };
 
   // Delete attempt from cloud

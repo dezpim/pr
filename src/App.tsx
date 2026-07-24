@@ -777,17 +777,26 @@ export default function App() {
 
         // Upload matched attempts
         let successCount = 0;
+        let duplicateCount = 0;
         const matchedNames: string[] = [];
         for (const match of matchedAttempts) {
-          const success = await addAttemptToCloud(match.id, match.attemptData);
-          if (success) {
+          const res = await addAttemptToCloud(match.id, match.attemptData);
+          if (res === "added") {
             successCount++;
             matchedNames.push(`${match.segmentName} (${formatMsToTime(match.durationMs)})`);
+          } else if (res === "duplicate") {
+            duplicateCount++;
           }
         }
 
         if (successCount > 0) {
-          alert(`🎉 주행 기록 분석 및 등록 완료!\n다음 ${successCount}개 구간의 완주 기록이 매칭되었습니다:\n\n${matchedNames.join("\n")}`);
+          let msg = `🎉 주행 기록 분석 및 등록 완료!\n다음 ${successCount}개 구간의 완주 기록이 새로 매칭되었습니다:\n\n${matchedNames.join("\n")}`;
+          if (duplicateCount > 0) {
+            msg += `\n\n(ℹ️ 이미 등록된 중복 기록 ${duplicateCount}개는 자동으로 제외되었습니다.)`;
+          }
+          alert(msg);
+        } else if (duplicateCount > 0) {
+          alert(`ℹ️ 업로드한 GPX 파일의 주행 기록(${duplicateCount}개 구간)은 이미 모두 리더보드에 등록되어 있습니다.`);
         }
       } catch (err) {
         alert("GPX 파일 파싱에 실패했습니다. 올바른 GPX 형식인지 확인해 주세요.");
@@ -833,18 +842,20 @@ export default function App() {
       return;
     }
 
-    const success = await addAttemptToCloud(selectedSegId, {
+    const res = await addAttemptToCloud(selectedSegId, {
       riderName: "Me",
       date: manualDate,
       durationMs,
       avgSpeed: speed,
     });
 
-    if (success) {
+    if (res === "added") {
       alert("🎉 기록이 성공적으로 추가되었습니다!");
       setManualTime("");
       setManualSpeed("");
       setShowManualForm(false);
+    } else if (res === "duplicate") {
+      alert("ℹ️ 이미 해당 날짜와 시간에 동일한 주행 기록이 등록되어 있습니다.");
     }
   };
 
