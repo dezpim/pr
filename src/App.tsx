@@ -454,8 +454,8 @@ export default function App() {
     cleanOrphanedFiles,
   } = useGoogleDrive();
 
-  // Navigation views: 'directory' | 'leaderboard' | 'editor'
-  const [activeView, setActiveView] = useState<"directory" | "leaderboard" | "editor">("directory");
+  // Navigation views: 'directory' | 'leaderboard' | 'editor' | 'recent_records'
+  const [activeView, setActiveView] = useState<"directory" | "leaderboard" | "editor" | "recent_records">("directory");
 
   // Filter Period: 'all' | 'year' | 'days30'
   const [filterPeriod, setFilterPeriod] = useState<"all" | "year" | "days30">("all");
@@ -1024,10 +1024,10 @@ export default function App() {
     });
   });
 
-  // Derived list of recently challenged segment IDs from the latest upload session (within 10 seconds of maxTimestamp)
+  // Derived list of recently challenged segment IDs from the latest upload session (within 5 minutes of maxTimestamp)
   const lastUploadedSegmentIds = maxTimestamp > 0
     ? catalog.segments
-        .filter(seg => (rankings[seg.id] || []).some(att => parseInt(att.id) >= maxTimestamp - 10000))
+        .filter(seg => (rankings[seg.id] || []).some(att => parseInt(att.id) >= maxTimestamp - 300000))
         .map(seg => seg.id)
     : [];
 
@@ -1036,7 +1036,7 @@ export default function App() {
     const attempts = rankings[segmentId] || [];
     if (attempts.length === 0 || maxTimestamp <= 0) return null;
 
-    const recentAtt = attempts.find(att => parseInt(att.id) >= maxTimestamp - 10000);
+    const recentAtt = attempts.find(att => parseInt(att.id) >= maxTimestamp - 300000);
     if (!recentAtt) return null;
 
     const sorted = [...attempts].sort((a, b) => a.durationMs - b.durationMs);
@@ -1052,8 +1052,8 @@ export default function App() {
       const attemptsA = rankings[a.id] || [];
       const attemptsB = rankings[b.id] || [];
       
-      const hasRecentA = maxTimestamp > 0 && attemptsA.some(att => parseInt(att.id) >= maxTimestamp - 10000);
-      const hasRecentB = maxTimestamp > 0 && attemptsB.some(att => parseInt(att.id) >= maxTimestamp - 10000);
+      const hasRecentA = maxTimestamp > 0 && attemptsA.some(att => parseInt(att.id) >= maxTimestamp - 300000);
+      const hasRecentB = maxTimestamp > 0 && attemptsB.some(att => parseInt(att.id) >= maxTimestamp - 300000);
 
       if (hasRecentA && !hasRecentB) return -1;
       if (!hasRecentA && hasRecentB) return 1;
@@ -1083,14 +1083,167 @@ export default function App() {
     leaderboardGridStyle = "50px 40px 1fr 120px 90px 50px";
   }
 
+  // Helper to compile a flat chronological list of all recent ride attempts across all segments
+  const getAllRecentRideAttempts = () => {
+    const list: {
+      segmentId: string;
+      segmentName: string;
+      attempt: CloudAttempt;
+      rank: number;
+      isPR: boolean;
+      totalAttempts: number;
+    }[] = [];
+
+    catalog.segments.forEach((seg) => {
+      const attempts = rankings[seg.id] || [];
+      if (attempts.length === 0) return;
+
+      const sortedByDuration = [...attempts].sort((a, b) => a.durationMs - b.durationMs);
+
+      attempts.forEach((att) => {
+        const rankIndex = sortedByDuration.findIndex((a) => a.id === att.id);
+        const rank = rankIndex !== -1 ? rankIndex + 1 : sortedByDuration.length;
+        const isPR = rank === 1;
+
+        list.push({
+          segmentId: seg.id,
+          segmentName: seg.name,
+          attempt: att,
+          rank,
+          isPR,
+          totalAttempts: attempts.length,
+        });
+      });
+    });
+
+    return list.sort((a, b) => b.attempt.date.localeCompare(a.attempt.date));
+  };
+
+  const allRecentAttempts = getAllRecentRideAttempts();
+
   return (
-    <div className="app-container">
-      {/* 1. Subtle, Clean Header (KO) */}
-      <header className="app-header">
-        <div className="header-logo">
-          <span className="logo-icon">🏆</span>
-          <h1>개인 리더보드</h1>
+    <div className="app-shell" style={{ display: "flex", minHeight: "100vh", backgroundColor: "#F7F7FA" }}>
+      {/* Left Sidebar Navigation Menu */}
+      <aside className="app-sidebar" style={{ width: "240px", backgroundColor: "#1E1E24", color: "#FFFFFF", padding: "24px 16px", display: "flex", flexDirection: "column", gap: "24px", flexShrink: 0, borderRight: "1px solid #2D2D38" }}>
+        <div className="sidebar-brand" style={{ display: "flex", alignItems: "center", gap: "10px", paddingBottom: "16px", borderBottom: "1px solid #33333F" }}>
+          <span style={{ fontSize: "24px" }}>🏆</span>
+          <span style={{ fontSize: "18px", fontWeight: "bold", color: "#FFFFFF", letterSpacing: "-0.5px" }}>개인 리더보드</span>
         </div>
+
+        <nav className="sidebar-nav" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <button
+            className={`sidebar-nav-item ${activeView === "directory" ? "active" : ""}`}
+            onClick={() => setActiveView("directory")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              padding: "12px 14px",
+              borderRadius: "8px",
+              border: "none",
+              background: activeView === "directory" ? "#FC6100" : "transparent",
+              color: "#FFFFFF",
+              fontSize: "14px",
+              fontWeight: activeView === "directory" ? "bold" : "normal",
+              cursor: "pointer",
+              textAlign: "left",
+              width: "100%",
+              transition: "background 0.2s",
+            }}
+          >
+            <span>📂</span> 전체 구간 목록
+          </button>
+
+          <button
+            className={`sidebar-nav-item ${activeView === "recent_records" ? "active" : ""}`}
+            onClick={() => setActiveView("recent_records")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              padding: "12px 14px",
+              borderRadius: "8px",
+              border: "none",
+              background: activeView === "recent_records" ? "#FC6100" : "transparent",
+              color: "#FFFFFF",
+              fontSize: "14px",
+              fontWeight: activeView === "recent_records" ? "bold" : "normal",
+              cursor: "pointer",
+              textAlign: "left",
+              width: "100%",
+              transition: "background 0.2s",
+            }}
+          >
+            <span>🔥</span> 최근 기록 보기
+            {allRecentAttempts.length > 0 && (
+              <span style={{ marginLeft: "auto", background: "rgba(255,255,255,0.2)", padding: "2px 8px", borderRadius: "10px", fontSize: "11px" }}>
+                {allRecentAttempts.length}
+              </span>
+            )}
+          </button>
+
+          {accessToken && (
+            <button
+              className={`sidebar-nav-item ${activeView === "editor" ? "active" : ""}`}
+              onClick={() => {
+                setGpxData(null);
+                setSegmentName("");
+                setDetectedClimbs([]);
+                setActiveView("editor");
+              }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                padding: "12px 14px",
+                borderRadius: "8px",
+                border: "none",
+                background: activeView === "editor" ? "#FC6100" : "transparent",
+                color: "#FFFFFF",
+                fontSize: "14px",
+                fontWeight: activeView === "editor" ? "bold" : "normal",
+                cursor: "pointer",
+                textAlign: "left",
+                width: "100%",
+                transition: "background 0.2s",
+              }}
+            >
+              <span>➕</span> 새 구간 등록
+            </button>
+          )}
+        </nav>
+
+        {/* Sidebar Footer info */}
+        <div style={{ marginTop: "auto", paddingTop: "16px", borderTop: "1px solid #33333F", fontSize: "12px", color: "#8E8E93" }}>
+          {accessToken ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <div style={{ color: "#FFF", fontWeight: "bold" }}>● {userEmail || "구글 연동 완료"}</div>
+              <button
+                onClick={logout}
+                style={{ background: "none", border: "none", color: "#8E8E93", cursor: "pointer", padding: 0, textAlign: "left", fontSize: "12px", textDecoration: "underline" }}
+              >
+                로그아웃
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={login}
+              style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "none", background: "#FC6100", color: "#FFF", fontWeight: "bold", cursor: "pointer" }}
+            >
+              구글 로그인
+            </button>
+          )}
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <div className="app-main-content" style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        {/* 1. Subtle, Clean Header (KO) */}
+        <header className="app-header">
+          <div className="header-logo">
+            <span className="logo-icon">🏆</span>
+            <h1>개인 리더보드</h1>
+          </div>
 
         <div className="header-actions">
           {accessToken && activeView !== "editor" && (
@@ -1997,7 +2150,80 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* View D: All Recent Ride Attempts View */}
+        {activeView === "recent_records" && (
+          <div className="recent-records-container" style={{ padding: "24px", maxWidth: "1000px", margin: "0 auto", width: "100%" }}>
+            <div className="directory-header-row" style={{ marginBottom: "24px" }}>
+              <h2>🔥 최근 주행 기록 전체 보기 ({allRecentAttempts.length}개)</h2>
+              <p className="directory-subtitle">모든 코스에서 수집된 주행 기록을 최신 순으로 한눈에 확인하세요.</p>
+            </div>
+
+            {allRecentAttempts.length === 0 ? (
+              <div className="card" style={{ textAlign: "center", padding: "40px", color: "#888" }}>
+                아직 등록된 주행 기록이 없습니다. GPX 파일 업로드를 통해 첫 완주 기록을 남겨보세요!
+              </div>
+            ) : (
+              <div className="recent-attempts-list" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {allRecentAttempts.map((item, idx) => (
+                  <div
+                    key={`${item.segmentId}-${item.attempt.id}-${idx}`}
+                    className="card recent-attempt-card"
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "16px 20px",
+                      background: item.isPR ? "#FFFBF7" : "#FFFFFF",
+                      border: item.isPR ? "2px solid #FC6100" : "1px solid #E6E6EB",
+                      borderRadius: "12px",
+                      cursor: "pointer",
+                      transition: "transform 0.15s, box-shadow 0.15s",
+                    }}
+                    onClick={() => {
+                      setSelectedSegId(item.segmentId);
+                      setActiveView("leaderboard");
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                      <div style={{ fontSize: "24px" }}>
+                        {item.isPR ? "👑" : "🏆"}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: "bold", fontSize: "16px", color: "#222", marginBottom: "4px" }}>
+                          ⛰️ {item.segmentName}{" "}
+                          {item.isPR ? (
+                            <span style={{ background: "#FC6100", color: "#FFF", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", fontWeight: "bold", marginLeft: "8px" }}>
+                              1등. 개인 최고 기록 (PR)! 🎉
+                            </span>
+                          ) : (
+                            <span style={{ background: "#FFEADA", color: "#FC6100", padding: "2px 8px", borderRadius: "10px", fontSize: "11px", fontWeight: "bold", marginLeft: "8px" }}>
+                              {item.rank}등
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: "13px", color: "#666" }}>
+                          📅 주행일: {item.attempt.date} ({getRelativeTimeKo(item.attempt.date)})
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: "18px", fontWeight: "bold", color: "#FC6100" }}>
+                        {formatMsToTime(item.attempt.durationMs)}
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#888" }}>
+                        평균 {item.attempt.avgSpeed.toFixed(1)} km/h
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </main>
     </div>
+  </div>
   );
 }
