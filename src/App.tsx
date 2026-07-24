@@ -469,6 +469,9 @@ export default function App() {
   // Active hovered split segment tracker
   const [hoveredSplitNum, setHoveredSplitNum] = useState<number | null>(null);
 
+  // Explicit session tracking for uploaded segment IDs
+  const [recentUploadSessionSegIds, setRecentUploadSessionSegIds] = useState<string[]>([]);
+
   // Toggle manual attempt input form
   const [showManualForm, setShowManualForm] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -807,6 +810,9 @@ export default function App() {
           return;
         }
 
+        // Set explicit session IDs for newly uploaded segments
+        setRecentUploadSessionSegIds(matchedAttempts.map(m => m.id));
+
         // Upload matched attempts
         let successCount = 0;
         let duplicateCount = 0;
@@ -1036,19 +1042,28 @@ export default function App() {
     });
   });
 
-  // Derived list of recently challenged segment IDs from the latest upload session (within 5 minutes of maxTimestamp)
-  const lastUploadedSegmentIds = maxTimestamp > 0
-    ? catalog.segments
-        .filter(seg => (rankings[seg.id] || []).some(att => parseInt(att.id) >= maxTimestamp - 300000))
-        .map(seg => seg.id)
-    : [];
+  // Derived list of recently challenged segment IDs from the latest upload session
+  const lastUploadedSegmentIds = Array.from(new Set([
+    ...recentUploadSessionSegIds,
+    ...(maxTimestamp > 0
+      ? catalog.segments
+          .filter(seg => (rankings[seg.id] || []).some(att => {
+            const ts = parseInt(att.id);
+            return !isNaN(ts) && ts >= maxTimestamp - 600000;
+          }))
+          .map(seg => seg.id)
+      : [])
+  ]));
 
   // Helper to calculate rank & PR status of the latest uploaded attempt in a segment
   const getLatestAttemptRankInfo = (segmentId: string) => {
     const attempts = rankings[segmentId] || [];
-    if (attempts.length === 0 || maxTimestamp <= 0) return null;
+    if (attempts.length === 0) return null;
 
-    const recentAtt = attempts.find(att => parseInt(att.id) >= maxTimestamp - 300000);
+    const recentAtt = attempts.find(att => {
+      const ts = parseInt(att.id);
+      return recentUploadSessionSegIds.includes(segmentId) || (!isNaN(ts) && maxTimestamp > 0 && ts >= maxTimestamp - 600000);
+    }) || attempts[attempts.length - 1];
     if (!recentAtt) return null;
 
     const sorted = [...attempts].sort((a, b) => a.durationMs - b.durationMs);
@@ -1134,42 +1149,88 @@ export default function App() {
   const allRecentAttempts = getAllRecentRideAttempts();
 
   return (
-    <div className="app-container">
-      {/* Top Header with Logo and Navigation Tabs */}
-      <header className="app-header">
-        <div className="header-left">
-          <div
-            className="header-logo"
+    <div className="app-shell">
+      {/* Sleek, Compact Left Sidebar Menu */}
+      <aside className="app-sidebar">
+        <div
+          className="sidebar-brand"
+          onClick={() => setActiveView("directory")}
+          style={{ cursor: "pointer" }}
+        >
+          <span className="sidebar-logo-icon">🏆</span>
+          <span className="sidebar-title">개인 리더보드</span>
+        </div>
+
+        <nav className="sidebar-menu">
+          <button
+            className={`sidebar-item ${activeView === "directory" ? "active" : ""}`}
             onClick={() => setActiveView("directory")}
-            style={{ cursor: "pointer" }}
-            title="홈 전체 구간 목록으로 이동"
           >
-            <span className="logo-icon">🏆</span>
-            <h1>개인 리더보드</h1>
+            <span className="sidebar-item-icon">📂</span>
+            <span className="sidebar-item-text">전체 구간 목록</span>
+          </button>
+
+          <button
+            className={`sidebar-item ${activeView === "recent_records" ? "active" : ""}`}
+            onClick={() => setActiveView("recent_records")}
+          >
+            <span className="sidebar-item-icon">🔥</span>
+            <span className="sidebar-item-text">최근 기록 보기</span>
+            {allRecentAttempts.length > 0 && (
+              <span className="sidebar-badge">{allRecentAttempts.length}</span>
+            )}
+          </button>
+
+          {accessToken && (
+            <button
+              className={`sidebar-item ${activeView === "editor" ? "active" : ""}`}
+              onClick={() => {
+                setGpxData(null);
+                setSegmentName("");
+                setDetectedClimbs([]);
+                setActiveView("editor");
+              }}
+            >
+              <span className="sidebar-item-icon">➕</span>
+              <span className="sidebar-item-text">새 구간 등록</span>
+            </button>
+          )}
+        </nav>
+
+        {/* Sidebar Footer User Info */}
+        <div className="sidebar-footer">
+          {accessToken ? (
+            <div className="sidebar-user-box">
+              <div className="sidebar-user-status">● {userEmail || "구글 연동 완료"}</div>
+              <button className="sidebar-logout-btn" onClick={logout}>
+                로그아웃
+              </button>
+            </div>
+          ) : (
+            <button className="sidebar-login-btn" onClick={login}>
+              구글 계정 로그인
+            </button>
+          )}
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <div className="app-main-content">
+        {/* Top Header inside main content area */}
+        <header className="app-header">
+          <div className="header-title-heading">
+            <h2>
+              {activeView === "directory" && "📂 전체 구간 목록 (디렉토리)"}
+              {activeView === "recent_records" && "🔥 최근 주행 기록 전체 보기"}
+              {activeView === "editor" && "➕ 새 구간 등록 및 분석"}
+              {activeView === "leaderboard" && (activeSegment ? `⛰️ ${activeSegment.name}` : "📊 구간 상세 리더보드")}
+            </h2>
           </div>
 
-          {/* Navigation Tabs in Top Header */}
-          <nav className="header-nav-tabs">
-            <button
-              className={`nav-tab-btn ${activeView === "directory" ? "active" : ""}`}
-              onClick={() => setActiveView("directory")}
-            >
-              📂 전체 구간 목록
-            </button>
-
-            <button
-              className={`nav-tab-btn ${activeView === "recent_records" ? "active" : ""}`}
-              onClick={() => setActiveView("recent_records")}
-            >
-              🔥 최근 기록 전체 보기
-              {allRecentAttempts.length > 0 && (
-                <span className="tab-badge">{allRecentAttempts.length}</span>
-              )}
-            </button>
-
-            {accessToken && (
+          <div className="header-actions">
+            {accessToken && activeView !== "editor" && (
               <button
-                className={`nav-tab-btn ${activeView === "editor" ? "active" : ""}`}
+                className="btn btn-primary btn-sm"
                 onClick={() => {
                   setGpxData(null);
                   setSegmentName("");
@@ -1177,42 +1238,26 @@ export default function App() {
                   setActiveView("editor");
                 }}
               >
-                ➕ 새 구간 등록
+                ➕ 구간 등록
               </button>
             )}
-          </nav>
-        </div>
 
-        <div className="header-actions">
-          {accessToken ? (
-            <div className="user-profile">
-              <span className="user-email">{userEmail || "연결됨"}</span>
-              <button className="btn btn-secondary btn-sm" onClick={logout}>
-                로그아웃
-              </button>
-            </div>
-          ) : (
-            <button className="btn btn-primary btn-sm" onClick={login}>
-              로그인
-            </button>
-          )}
-
-          {/* Notification Bell Center */}
-          {accessToken && (
-            <div className="notification-wrapper" style={{ position: "relative" }}>
-              <button
-                className="btn-icon"
-                onClick={() => {
-                  setShowNotifications(!showNotifications);
-                  if (!showNotifications && unreadCount > 0) {
-                    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-                  }
-                }}
-                title="주행 분석 알림 센터"
-              >
-                🔔
-                {unreadCount > 0 && <span className="notification-badge">{unreadCount}</span>}
-              </button>
+            {/* Notification Bell Center */}
+            {accessToken && (
+              <div className="notification-wrapper" style={{ position: "relative" }}>
+                <button
+                  className="btn-icon"
+                  onClick={() => {
+                    setShowNotifications(!showNotifications);
+                    if (!showNotifications && unreadCount > 0) {
+                      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+                    }
+                  }}
+                  title="주행 분석 알림 센터"
+                >
+                  🔔
+                  {unreadCount > 0 && <span className="notification-badge">{unreadCount}</span>}
+                </button>
 
                 {/* Notification Popover Dropdown */}
                 {showNotifications && (
@@ -2177,5 +2222,6 @@ export default function App() {
         )}
       </main>
     </div>
+  </div>
   );
 }
