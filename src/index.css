@@ -1737,3 +1737,226 @@ body {
   margin-bottom: 4px;
 }
 
+/* ==========================================================================
+   Enlarged, Meaningful 3D Metallic Trophy Badge System
+   ========================================================================== */
+
+/* 1. Celebration Modal Backdrop & Enriched Card */
+.trophy-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(10, 10, 15, 0.75);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 20px;
+  animation: fadeIn 0.25s ease-out;
+}
+
+.trophy-modal-card {
+  background-color: #FFFFFF;
+  width: 100%;
+  max-width: 620px;
+  max-height: 88vh;
+  border-radius: 20px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #E6E6EB;
+  animation: slideUp 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.trophy-modal-header {
+  padding: 28px 24px 18px 24px;
+  text-align: center;
+  background: linear-gradient(180deg, #FFF9F2 0%, #FFFFFF 100%);
+  border-bottom: 1px solid #F0F0F5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Enlarged 3D Emblem Header Icon */
+.trophy-modal-icon-badge {
+  width: 90px;
+  height: 90px;
+  border-radius: 24px;
+  background: linear-gradient(135deg, #FFD700 0%, #FF9800 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 52px;
+  margin-bottom: 12px;
+  box-shadow: 0 12px 30px rgba(255, 152, 0, 0.45), inset 0 3px 6px rgba(255, 255, 255, 0.8);
+  border: 4px solid #FFFFFF;
+  animation: pulse 1.8s infinite;
+}
+
+.trophy-modal-header h2 {
+  font-size: 24px;
+  font-weight: 900;
+  color: #1A1A1E;
+  margin: 0 0 6px 0;
+  letter-spacing: -0.5px;
+}
+
+.trophy-modal-subtitle {
+  font-size: 14px;
+  color: #56565A;
+  margin: 0;
+}
+
+/* 2. Medal Ribbon Strip ("훈장 붙듯 주르륵!") */
+.trophy-medal-strip {
+  padding: 20px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 440px;
+}
+
+.medal-badge-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 2px solid #E6E6EB;
+  background-color: #FAFAFC;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  animation: slideInRight 0.35s ease-out forwards;
+}
+
+.medal-badge-card:hover {
+  transform: translateY(-3px) scale(1.01);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+}
+
+/* Enlarged 64px 3D Metallic Badge Icon */
+.medal-badge-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34px;
+  color: #FFFFFF;
+  flex-shrink: 0;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.15), inset 0 3px 6px rgba(255,255,255,0.4);
+  border: 3px solid rgba(255,255,255,0.9);
+}
+
+.medal-badge-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.medal-badge-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.medal-badge-title {
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: -0.3px;
+}
+
+.medal-badge-tier {
+  font-size: 10px;
+  font-weight: 900;
+  padding: 3px 8px;
+  border-radius: 12px;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+}
+
+.medal-badge-desc {
+  font-size: 13px;
+  color: #55555A;
+}
+
+.medal-badge-praise {
+  margin-top: 6px;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.9);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1F1F24;
+  border-left: 4px solid #FC6100;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+}
+
+/* 3. Enlarged Trophy Room Icons (60px) */
+.trophy-room-card {
+  padding: 18px;
+  border-radius: 16px;
+  border: 2px solid #E6E6EB;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  transition: transform 0.25s, box-shadow 0.25s;
+}
+
+.trophy-room-card.unlocked:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+}
+
+.trophy-room-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  flex-shrink: 0;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.12), inset 0 2px 4px rgba(255,255,255,0.4);
+  border: 2px solid rgba(255,255,255,0.8);
+}
+
+.trophy-room-title {
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.trophy-room-tier {
+  font-size: 10px;
+  font-weight: 900;
+  padding: 3px 8px;
+  border-radius: 10px;
+}
+
+/* 4. Enlarged Inline Ribbons Pinned Next to Attempts */
+.inline-medal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 800;
+  border: 1.5px solid rgba(0,0,0,0.08);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.06);
+  cursor: help;
+  transition: transform 0.15s ease;
+}
+
+.inline-medal-badge:hover {
+  transform: scale(1.08);
+}
+
+

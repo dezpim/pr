@@ -8,6 +8,24 @@ interface TrophyRoomProps {
 
 const ITEMS_PER_PAGE = 48;
 
+function getTierStyle(tier: string) {
+  switch (tier) {
+    case "legendary":
+      return { background: "linear-gradient(135deg, #D50000, #FFD700)", color: "#FFFFFF" };
+    case "diamond":
+      return { background: "linear-gradient(135deg, #0091EA, #00E5FF)", color: "#000000", fontWeight: "bold" as const };
+    case "platinum":
+      return { background: "linear-gradient(135deg, #673AB7, #E040FB)", color: "#FFFFFF" };
+    case "gold":
+      return { background: "linear-gradient(135deg, #FF9800, #FFD700)", color: "#3A2500", fontWeight: "bold" as const };
+    case "silver":
+      return { background: "linear-gradient(135deg, #607D8B, #CFD8DC)", color: "#111111" };
+    case "bronze":
+    default:
+      return { background: "linear-gradient(135deg, #8D4E2A, #D77A3F)", color: "#FFFFFF" };
+  }
+}
+
 export const TrophyRoom: React.FC<TrophyRoomProps> = ({ unlockedTrophies }) => {
   const [selectedCat, setSelectedCat] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -24,7 +42,6 @@ export const TrophyRoom: React.FC<TrophyRoomProps> = ({ unlockedTrophies }) => {
   const unlockedCount = unlockedMap.size;
   const progressPercent = Math.round((unlockedCount / totalCount) * 100);
 
-  // Filter trophies by category, search, and unlocked state
   const filteredTrophies = useMemo(() => {
     return TROPHY_REGISTRY.filter((t) => {
       if (selectedCat !== "all" && t.category !== selectedCat) return false;
@@ -177,11 +194,12 @@ export const TrophyRoom: React.FC<TrophyRoomProps> = ({ unlockedTrophies }) => {
         </div>
       </div>
 
-      {/* Trophy Grid (Paginated 48 per page for smooth 60fps performance) */}
+      {/* Trophy Grid (Paginated 48 per page with 60px 3D Metallic Badge Icons) */}
       <div className="trophy-grid">
         {paginatedTrophies.map((t) => {
           const unlockedInfo = unlockedMap.get(t.id);
           const isUnlocked = !!unlockedInfo;
+          const tierStyle = getTierStyle(t.tier);
 
           return (
             <div
@@ -195,7 +213,7 @@ export const TrophyRoom: React.FC<TrophyRoomProps> = ({ unlockedTrophies }) => {
               <div
                 className="trophy-room-icon"
                 style={{
-                  backgroundColor: isUnlocked ? t.badgeColor : "#E0E0E6",
+                  background: isUnlocked ? `linear-gradient(135deg, ${t.badgeColor}, #222)` : "#E0E0E6",
                   color: isUnlocked ? "#FFF" : "#A0A0AA",
                 }}
               >
@@ -207,7 +225,9 @@ export const TrophyRoom: React.FC<TrophyRoomProps> = ({ unlockedTrophies }) => {
                   <span className="trophy-room-title" style={{ color: isUnlocked ? t.badgeColor : "#888" }}>
                     {t.title}
                   </span>
-                  <span className="trophy-room-tier">{t.tier.toUpperCase()}</span>
+                  <span className="trophy-room-tier" style={tierStyle}>
+                    {t.tier.toUpperCase()}
+                  </span>
                 </div>
 
                 <div className="trophy-room-desc">{t.description}</div>

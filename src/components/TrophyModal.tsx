@@ -7,6 +7,24 @@ interface TrophyModalProps {
   onViewTrophies: () => void;
 }
 
+function getTierStyle(tier: string) {
+  switch (tier) {
+    case "legendary":
+      return { background: "linear-gradient(135deg, #D50000, #FFD700)", color: "#FFFFFF", boxShadow: "0 0 8px rgba(213,0,0,0.4)" };
+    case "diamond":
+      return { background: "linear-gradient(135deg, #0091EA, #00E5FF)", color: "#000000", fontWeight: "bold" as const };
+    case "platinum":
+      return { background: "linear-gradient(135deg, #673AB7, #E040FB)", color: "#FFFFFF" };
+    case "gold":
+      return { background: "linear-gradient(135deg, #FF9800, #FFD700)", color: "#3A2500", fontWeight: "bold" as const };
+    case "silver":
+      return { background: "linear-gradient(135deg, #607D8B, #CFD8DC)", color: "#111111" };
+    case "bronze":
+    default:
+      return { background: "linear-gradient(135deg, #8D4E2A, #D77A3F)", color: "#FFFFFF" };
+  }
+}
+
 export const TrophyModal: React.FC<TrophyModalProps> = ({ trophies, onClose, onViewTrophies }) => {
   if (!trophies || trophies.length === 0) return null;
 
@@ -16,44 +34,51 @@ export const TrophyModal: React.FC<TrophyModalProps> = ({ trophies, onClose, onV
         {/* Header Confetti & Title */}
         <div className="trophy-modal-header">
           <div className="trophy-modal-icon-badge">🎖️</div>
-          <h2>축하합니다! 훈장 달성!</h2>
+          <h2>축하합니다! 영예의 훈장 달성!</h2>
           <p className="trophy-modal-subtitle">
-            이번 주행으로 <strong>{trophies.length}개</strong>의 영예로운 훈장/트로피를 달성했습니다!
+            이번 주행으로 <strong>{trophies.length}개</strong>의 훈장/트로피를 달성했습니다!
           </p>
         </div>
 
         {/* Medal Ribbon Strip ("훈장 붙듯 주르륵!") */}
         <div className="trophy-medal-strip">
-          {trophies.map((t, idx) => (
-            <div
-              key={t.id}
-              className="medal-badge-card"
-              style={{
-                borderColor: t.badgeColor,
-                backgroundColor: t.badgeBg,
-                animationDelay: `${idx * 0.15}s`,
-              }}
-            >
+          {trophies.map((t, idx) => {
+            const tierStyle = getTierStyle(t.tier);
+            return (
               <div
-                className="medal-badge-icon"
-                style={{ backgroundColor: t.badgeColor }}
+                key={t.id}
+                className="medal-badge-card"
+                style={{
+                  borderColor: t.badgeColor,
+                  backgroundColor: t.badgeBg,
+                  animationDelay: `${idx * 0.12}s`,
+                }}
               >
-                {t.icon}
-              </div>
-              <div className="medal-badge-info">
-                <div className="medal-badge-header">
-                  <span className="medal-badge-title" style={{ color: t.badgeColor }}>
-                    {t.title}
-                  </span>
-                  <span className="medal-badge-tier">{t.tier.toUpperCase()}</span>
+                <div
+                  className="medal-badge-icon"
+                  style={{
+                    background: `linear-gradient(135deg, ${t.badgeColor}, #222)`,
+                  }}
+                >
+                  {t.icon}
                 </div>
-                <div className="medal-badge-desc">{t.description}</div>
-                <div className="medal-badge-praise">
-                  💬 "{t.praiseMessage}"
+                <div className="medal-badge-info">
+                  <div className="medal-badge-header">
+                    <span className="medal-badge-title" style={{ color: t.badgeColor }}>
+                      {t.title}
+                    </span>
+                    <span className="medal-badge-tier" style={tierStyle}>
+                      {t.tier.toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="medal-badge-desc">{t.description}</div>
+                  <div className="medal-badge-praise">
+                    💬 "{t.praiseMessage}"
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Footer Actions */}
