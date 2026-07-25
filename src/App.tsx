@@ -1533,6 +1533,19 @@ export default function App() {
                     스마트폰 브라우저나 타 디바이스에서 아래 버튼을 누르면 Client ID가 자동으로 입력된 원클릭 링크가 복사됩니다.
                   </p>
                   <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    {accessToken && (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        style={{ fontSize: "11px", backgroundColor: "#FC6100", border: "none", fontWeight: "bold" }}
+                        onClick={() => {
+                          const deepLink = `osmand-oauth://gdrive?access_token=${encodeURIComponent(accessToken)}&client_id=${encodeURIComponent(clientId)}`;
+                          window.location.href = deepLink;
+                        }}
+                      >
+                        🚀 폰 앱(OsmAnd)에 1초 만에 자동 로그인
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="btn btn-secondary btn-sm"
@@ -1543,7 +1556,7 @@ export default function App() {
                         alert("🎉 원클릭 모바일 연결 링크가 복사되었습니다!\n\n스마트폰 카카오톡이나 모바일 브라우저로 전송 후 열면 Client ID가 자동으로 설정됩니다.");
                       }}
                     >
-                      🔗 원클릭 모바일 연결 링크 복사
+                      🔗 원클릭 웹 연결 링크 복사
                     </button>
                     <button
                       type="button"
