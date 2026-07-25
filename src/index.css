@@ -2407,4 +2407,70 @@ body {
   transform: scale(1.08);
 }
 
+/* ==========================================================================
+   Segment Markdown Description & Discreet Danger Action System
+   ========================================================================== */
+.segment-desc-card {
+  background: #FFFDF9;
+  border: 1px solid #FFEADA;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-top: 14px;
+  position: relative;
+}
+
+.segment-desc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.segment-desc-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: #1A1A1E;
+}
+
+.markdown-body {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #33333A;
+}
+
+.markdown-h1 { font-size: 18px; font-weight: 900; margin: 12px 0 6px 0; color: #111; }
+.markdown-h2 { font-size: 16px; font-weight: 800; margin: 10px 0 4px 0; color: #222; }
+.markdown-h3 { font-size: 14px; font-weight: 750; margin: 8px 0 4px 0; color: #333; }
+.markdown-p { margin: 4px 0; }
+.markdown-ul { margin: 4px 0; padding-left: 20px; }
+.markdown-blockquote {
+  border-left: 4px solid #FC6100;
+  background: #FFF3EB;
+  padding: 6px 12px;
+  margin: 6px 0;
+  border-radius: 0 6px 6px 0;
+  font-style: italic;
+}
+.markdown-link { color: #FC6100; text-decoration: underline; font-weight: 700; }
+.inline-code { background: #EFEFF4; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 12px; }
+
+/* Discreet Danger Action Button for Deletion */
+.btn-discreet-danger {
+  background: none;
+  border: none;
+  color: #9E9EA6;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.btn-discreet-danger:hover {
+  color: #D32F2F;
+  background: #FFEBEE;
+}
+
 

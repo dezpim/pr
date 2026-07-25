@@ -12,6 +12,7 @@ import type { UnlockedTrophy, TrophyDefinition } from "./types/trophy";
 import { evaluateNewTrophies } from "./utils/trophyEngine";
 import { TrophyModal } from "./components/TrophyModal";
 import { TrophyRoom } from "./components/TrophyRoom";
+import { MarkdownRenderer } from "./components/MarkdownRenderer";
 
 export interface AppNotification {
   id: string;
@@ -452,6 +453,7 @@ export default function App() {
     saveSegment,
     deleteSegment,
     renameSegment,
+    updateSegmentDescription,
     downloadGPXFile,
     addAttemptToCloud,
     deleteAttemptFromCloud,
@@ -487,6 +489,26 @@ export default function App() {
 
   // Active hovered split segment tracker
   const [hoveredSplitNum, setHoveredSplitNum] = useState<number | null>(null);
+
+  // Markdown Description Modal states
+  const [showDescModal, setShowDescModal] = useState<boolean>(false);
+  const [descText, setDescText] = useState<string>("");
+
+  const handleOpenDescModal = (currentDesc: string = "") => {
+    setDescText(currentDesc);
+    setShowDescModal(true);
+  };
+
+  const handleSaveDescModal = async () => {
+    if (!selectedSegId) return;
+    const success = await updateSegmentDescription(selectedSegId, descText);
+    if (success) {
+      setShowDescModal(false);
+      alert("🎉 구간 설명이 성공적으로 저장되었습니다!");
+    } else {
+      alert("구간 설명 저장 중 오류가 발생했습니다.");
+    }
+  };
 
   // Explicit session tracking for uploaded segment IDs
   const [recentUploadSessionSegIds, setRecentUploadSessionSegIds] = useState<string[]>([]);
@@ -1926,7 +1948,7 @@ export default function App() {
                             </div>
                           </div>
 
-                          {/* Card Edit & Delete actions */}
+                          {/* Card Edit action (Trash icon removed to prevent accidental deletion) */}
                           <div className="segment-card-actions" onClick={(e) => e.stopPropagation()}>
                             <button
                               className="btn-icon-only-small"
@@ -1934,13 +1956,6 @@ export default function App() {
                               title="이름 수정"
                             >
                               ✏️
-                            </button>
-                            <button
-                              className="btn-icon-only-small text-danger"
-                              onClick={() => handleSegmentDelete(seg.id, seg.name)}
-                              title="삭제"
-                            >
-                              🗑️
                             </button>
                           </div>
                         </div>
@@ -1982,7 +1997,7 @@ export default function App() {
             </div>
 
             <div className="card leaderboard-card strava-theme">
-              {/* Segment Header Row with Actions */}
+              {/* Segment Header Row with Actions (Prominent Delete button removed to prevent misclicks!) */}
               <div className="segment-selector-header-row">
                 <div className="selector-left">
                   <h3 className="leaderboard-seg-name">⛰️ {activeSegment.name}</h3>
@@ -1997,11 +2012,11 @@ export default function App() {
                     ✏️
                   </button>
                   <button
-                    className="btn btn-icon-only text-danger"
-                    onClick={() => handleSegmentDelete(activeSegment.id, activeSegment.name)}
-                    title="구간 삭제"
+                    className="btn btn-secondary btn-sm edit-seg-btn-small"
+                    onClick={() => handleOpenDescModal(activeSegment.descriptionMarkdown || "")}
+                    title="구간 설명 마크다운 작성/수정"
                   >
-                    🗑️
+                    📝 구간 설명
                   </button>
                   <button
                     className="btn btn-secondary btn-sm edit-seg-btn-small"
@@ -2021,6 +2036,27 @@ export default function App() {
                 <span>{activeSegment.elevationGainMeters}m 획득고도</span>
                 <span className="divider">|</span>
                 <span>평균 경사도 {activeSegment.avgGradePercent}%</span>
+              </div>
+
+              {/* Segment Markdown Description Box */}
+              <div className="segment-desc-card">
+                <div className="segment-desc-header">
+                  <h4>📝 구간 정보 & 마크다운 노트</h4>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: "11px", padding: "4px 8px" }}
+                    onClick={() => handleOpenDescModal(activeSegment.descriptionMarkdown || "")}
+                  >
+                    {activeSegment.descriptionMarkdown ? "✏️ 설명 수정" : "➕ 설명 작성"}
+                  </button>
+                </div>
+                {activeSegment.descriptionMarkdown ? (
+                  <MarkdownRenderer content={activeSegment.descriptionMarkdown} />
+                ) : (
+                  <div style={{ fontSize: "12px", color: "#8E8E93", fontStyle: "italic" }}>
+                    등록된 구간 설명이 없습니다. "➕ 설명 작성" 버튼을 눌러 구간 공략법, 주의사항, 마크다운 노트를 기록해보세요!
+                  </div>
+                )}
               </div>
 
               {/* Filter Pills */}
@@ -2292,6 +2328,16 @@ export default function App() {
                     </form>
                   </div>
                 )}
+                {/* Discreet Segment Deletion Link (Safely hidden away from misclicks) */}
+                <div style={{ textAlign: "right", marginTop: "24px", paddingTop: "14px", borderTop: "1px dashed #E6E6EB" }}>
+                  <button
+                    className="btn-discreet-danger"
+                    onClick={() => handleSegmentDelete(activeSegment.id, activeSegment.name)}
+                    title="구간 완전 삭제"
+                  >
+                    🗑️ 구간 완전 삭제 (신중히 클릭)
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -2395,6 +2441,44 @@ export default function App() {
 
         {activeView === "trophies" && (
           <TrophyRoom unlockedTrophies={unlockedTrophies} />
+        )}
+
+        {/* Markdown Description Modal */}
+        {showDescModal && (
+          <div className="modal-backdrop" onClick={() => setShowDescModal(false)}>
+            <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "680px", width: "90%" }}>
+              <h3>📝 구간 정보 & 마크다운 노트 편집</h3>
+              <p style={{ fontSize: "12px", color: "#666", marginBottom: "12px" }}>
+                구간 공략 팁, 신호등 위치, 주의사항 등을 마크다운(# 제목, **강조**, - 리스트)으로 기록해보세요.
+              </p>
+              <textarea
+                style={{ width: "100%", height: "160px", borderRadius: "8px", padding: "12px", border: "1px solid #D1D1D6", fontFamily: "monospace", fontSize: "13px", resize: "vertical" }}
+                value={descText}
+                onChange={(e) => setDescText(e.target.value)}
+                placeholder="# 구간 정보 및 공략 팁&#10;- 500m 지점 급경사 주의&#10;- 신호등 무정차 공략법"
+              />
+              <div style={{ marginTop: "12px", padding: "14px", background: "#FFFDF9", border: "1px solid #FFEADA", borderRadius: "10px" }}>
+                <div style={{ fontSize: "12px", fontWeight: "bold", color: "#FC6100", marginBottom: "8px" }}>
+                  🔍 라이브 마크다운 미리보기 (Live Preview):
+                </div>
+                {descText.trim() ? (
+                  <MarkdownRenderer content={descText} />
+                ) : (
+                  <div style={{ fontSize: "12px", color: "#999", fontStyle: "italic" }}>
+                    작성된 내용이 여기에 실시간 마크다운 서식으로 표시됩니다.
+                  </div>
+                )}
+              </div>
+              <div className="modal-actions" style={{ marginTop: "18px", display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                <button className="btn btn-primary" onClick={handleSaveDescModal} disabled={loading}>
+                  {loading ? "저장 중..." : "설정 저장"}
+                </button>
+                <button className="btn btn-secondary" onClick={() => setShowDescModal(false)}>
+                  취소
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </main>
     </div>

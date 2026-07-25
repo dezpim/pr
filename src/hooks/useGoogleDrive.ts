@@ -11,6 +11,7 @@ export interface CatalogSegment {
   startCoords: [number, number];
   endCoords: [number, number];
   routeSvgPath?: string;
+  descriptionMarkdown?: string;
 }
 
 export interface Catalog {
@@ -792,6 +793,54 @@ export function useGoogleDrive() {
     }
   };
 
+  // Update segment description (Markdown) in catalog.json
+  const updateSegmentDescription = async (segmentId: string, descriptionMarkdown: string): Promise<boolean> => {
+    if (!accessToken) return false;
+    setLoading(true);
+    try {
+      const folderId = await findOrCreateFolder(accessToken);
+      if (!folderId) return false;
+
+      const updatedSegments = catalog.segments.map(seg => {
+        if (seg.id === segmentId) {
+          return { ...seg, descriptionMarkdown };
+        }
+        return seg;
+      });
+      const newCatalog: Catalog = { segments: updatedSegments };
+
+      const catQuery = encodeURIComponent(`name = 'catalog.json' and '${folderId}' in parents and trashed = false`);
+      const catRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${catQuery}&spaces=drive`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      checkResponse(catRes, "catalog.json 검색 실패");
+      const catData = await catRes.json();
+
+      const blob = new Blob([JSON.stringify(newCatalog, null, 2)], { type: "application/json" });
+
+      if (catData.files && catData.files.length > 0) {
+        const fileId = catData.files[0].id;
+        const updateRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: blob,
+        });
+        checkResponse(updateRes, "catalog.json 업데이트 실패");
+      }
+
+      setCatalog(newCatalog);
+      return true;
+    } catch (e) {
+      console.error("구간 설명 저장 실패:", e);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     accessToken,
     clientId,
@@ -805,6 +854,7 @@ export function useGoogleDrive() {
     saveSegment,
     deleteSegment,
     renameSegment,
+    updateSegmentDescription,
     downloadGPXFile,
     addAttemptToCloud,
     deleteAttemptFromCloud,
