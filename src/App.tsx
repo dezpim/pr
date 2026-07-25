@@ -13,6 +13,7 @@ import { evaluateNewTrophies } from "./utils/trophyEngine";
 import { TrophyModal } from "./components/TrophyModal";
 import { TrophyRoom } from "./components/TrophyRoom";
 import { MarkdownRenderer } from "./components/MarkdownRenderer";
+import { HillAnalysisModal } from "./components/HillAnalysisModal";
 
 export interface AppNotification {
   id: string;
@@ -454,6 +455,7 @@ export default function App() {
     deleteSegment,
     renameSegment,
     updateSegmentDescription,
+    updateSegmentStageMessages,
     downloadGPXFile,
     addAttemptToCloud,
     deleteAttemptFromCloud,
@@ -1048,6 +1050,17 @@ export default function App() {
           setSelectedSegId(catalog.segments[0]?.id || "");
         }
       }
+    }
+  };
+
+  const [showHillAnalysisModal, setShowHillAnalysisModal] = useState<boolean>(false);
+
+  const handleSaveStageMessages = async (segmentId: string, messages: string[]) => {
+    const success = await updateSegmentStageMessages(segmentId, messages);
+    if (success) {
+      alert("🎉 언덕 10단계 AI 트레이너 말풍선 코칭 메시지가 구글 드라이브에 안전하게 저장되었습니다!");
+    } else {
+      alert("구글 드라이브 저장 중 오류가 발생했습니다.");
     }
   };
 
@@ -2033,6 +2046,14 @@ export default function App() {
                   </button>
                   <button
                     className="btn btn-secondary btn-sm edit-seg-btn-small"
+                    style={{ color: "#FEE500", backgroundColor: "#2A2A35", border: "1px solid #444455", fontWeight: "bold" }}
+                    onClick={() => setShowHillAnalysisModal(true)}
+                    title="언덕 10단계 구간 분석 및 AI 트레이너 말풍선 코칭 설정"
+                  >
+                    ⛰️ 10단계 언덕 분석 & 코칭
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-sm edit-seg-btn-small"
                     onClick={() => handleLoadSegmentToEditor(activeSegment.id, activeSegment.name)}
                     disabled={loading}
                     title="지도 범위 확인 및 편집"
@@ -2492,6 +2513,15 @@ export default function App() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* 10-Stage Hill Analysis & AI Coaching Modal */}
+        {showHillAnalysisModal && activeSegment && (
+          <HillAnalysisModal
+            segment={activeSegment}
+            onClose={() => setShowHillAnalysisModal(false)}
+            onSaveStageMessages={handleSaveStageMessages}
+          />
         )}
       </main>
     </div>

@@ -12,6 +12,7 @@ export interface CatalogSegment {
   endCoords: [number, number];
   routeSvgPath?: string;
   descriptionMarkdown?: string;
+  stageMessages?: string[];
 }
 
 export interface Catalog {
@@ -841,6 +842,53 @@ export function useGoogleDrive() {
     }
   };
 
+  const updateSegmentStageMessages = async (segmentId: string, stageMessages: string[]) => {
+    if (!accessToken) return false;
+    setLoading(true);
+    try {
+      const folderId = await findOrCreateFolder(accessToken);
+      if (!folderId) return false;
+
+      const updatedSegments = catalog.segments.map(seg => {
+        if (seg.id === segmentId) {
+          return { ...seg, stageMessages };
+        }
+        return seg;
+      });
+      const newCatalog: Catalog = { segments: updatedSegments };
+
+      const catQuery = encodeURIComponent(`name = 'catalog.json' and '${folderId}' in parents and trashed = false`);
+      const catRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${catQuery}&spaces=drive`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      checkResponse(catRes, "catalog.json 검색 실패");
+      const catData = await catRes.json();
+
+      const blob = new Blob([JSON.stringify(newCatalog, null, 2)], { type: "application/json" });
+
+      if (catData.files && catData.files.length > 0) {
+        const fileId = catData.files[0].id;
+        const updateRes = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: blob,
+        });
+        checkResponse(updateRes, "catalog.json 업데이트 실패");
+      }
+
+      setCatalog(newCatalog);
+      return true;
+    } catch (e) {
+      console.error("10단계 말풍선 저장 실패:", e);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     accessToken,
     clientId,
@@ -855,6 +903,7 @@ export function useGoogleDrive() {
     deleteSegment,
     renameSegment,
     updateSegmentDescription,
+    updateSegmentStageMessages,
     downloadGPXFile,
     addAttemptToCloud,
     deleteAttemptFromCloud,
