@@ -55,14 +55,14 @@ export function parseGPX(xmlText: string): GPXData {
     const timeNode = trkpt.querySelector("time");
     const time = timeNode ? timeNode.textContent || undefined : undefined;
 
-    // Parse sensor data (handling potential namespaces like gpxtpx:hr, etc.)
-    const hrNode = trkpt.querySelector("hr") || trkpt.querySelector("gpxtpx\\:hr") || trkpt.querySelector("*|hr");
+    // Parse sensor data (handling all vendor namespaces: OsmAnd, Garmin, Wahoo, ANT+)
+    const hrNode = trkpt.querySelector("hr, gpxtpx\\:hr, osmand\\:hr, ns3\\:hr, heartrate, *|hr");
     const hr = hrNode ? parseInt(hrNode.textContent || "0", 10) : undefined;
 
-    const cadNode = trkpt.querySelector("cad") || trkpt.querySelector("gpxtpx\\:cad") || trkpt.querySelector("*|cad") || trkpt.querySelector("cadence");
+    const cadNode = trkpt.querySelector("cad, cadence, gpxtpx\\:cad, osmand\\:cadence, osmand\\:cad, ns3\\:cad, *|cad");
     const cadence = cadNode ? parseInt(cadNode.textContent || "0", 10) : undefined;
 
-    const powerNode = trkpt.querySelector("power") || trkpt.querySelector("gpxtpx\\:power") || trkpt.querySelector("*|power");
+    const powerNode = trkpt.querySelector("power, pwr, watts, gpxtpx\\:power, osmand\\:power, ns3\\:power, *|power");
     const power = powerNode ? parseInt(powerNode.textContent || "0", 10) : undefined;
 
     if (i > 0) {
