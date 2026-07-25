@@ -1483,10 +1483,14 @@ export default function App() {
                 <label>OAuth Client ID (Web Application)</label>
                 <input
                   type="text"
-                  placeholder="Client ID를 입력하세요"
+                  placeholder="예: 123456789-xxxx.apps.googleusercontent.com"
                   value={tempClientId}
                   onChange={(e) => setTempClientId(e.target.value)}
                 />
+                <div style={{ fontSize: "11px", color: "#666", marginTop: "6px", lineHeight: "1.45", background: "#F4F4F8", padding: "8px 10px", borderRadius: "6px" }}>
+                  💡 <strong>Google Client ID란?</strong><br />
+                  외부 타사 서버가 아닌 <strong>내 개인 구글 드라이브(Google Drive)</strong>에 내 라이딩 기록(GPX)과 랭킹 파일을 안전하게 암호화 보관할 수 있도록 구글에서 허용해주는 <strong>무료 전용 열쇠(인증 아이디)</strong>입니다.
+                </div>
               </div>
 
               {/* Long-Lived Session Persistence Explanation */}
