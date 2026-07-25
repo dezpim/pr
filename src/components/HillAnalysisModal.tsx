@@ -27,16 +27,16 @@ export const HillAnalysisModal: React.FC<HillAnalysisModalProps> = ({
       return [...segment.stageMessages];
     }
     return [
-      `🔥 [${segment.name}] 출발! 페이스 조절하고 시원하게 올라갑시다!`,
-      `🚴‍♂️ 10% 돌파! 가볍게 케이던스 80+ 유지하세요!`,
-      `💪 20% 지점! 호흡 다듬고 페이스 업!`,
-      `⚡ 30% 지점! 경사도 업! 케이던스 킵하고 허벅지에 힘 집중!`,
-      `🚴‍♂️ 40% 도달! 1등 기록과 팽팽한 대결 중!`,
-      `🏔️ 50% 절반 통과! 딱 절반 왔습니다. 조금만 더 힘내세요!`,
-      `🔥 60% 지점! 피치 올려서 계속 밀어붙이세요!`,
-      `⚡ 70% 돌파! 고지가 멀지 않았습니다. 케이던스 킵!`,
-      `💨 80% 지점! 정상이 코앞입니다! 라스트 스퍼트 준비!`,
-      `🏁 90% 진입! 라스트 스퍼트!! 모든 힘을 쏟아부으세요!! 🔥`,
+      `🏴‍☠️ "Andiamo! [${segment.name}] 출발이다! 해적 두건 묶고 시원하게 올라가자! 🔥"`,
+      `🏴‍☠️ "10% 돌파! Ciao! 가볍게 케이던스 80+ 유지해! 이탈리아 정열을 보여줘!"`,
+      `🏴‍☠️ "💪 20% 지점! 호흡 다듬고 페이스 업! Hai la grinta!"`,
+      `🏴‍☠️ "⚡ 30% 지점! 경사도 올라간다! 허벅지에 힘 집중하고 댄싱 준비!"`,
+      `🏴‍☠️ "🚴‍♂️ 40% 도달! 1등 기록과 팽팽한 대결 중! Mamma mia!"`,
+      `🏴‍☠️ "🏔️ 50% 절반 통과! 딱 절반 왔다. Continua a lottare!"`,
+      `🏴‍☠️ "🔥 60% 지점! 피치 올려서 알프스 던지듯 밀어붙여!"`,
+      `🏴‍☠️ "⚡ 70% 돌파! 고지가 보인다! Forza! 케이던스 킵!"`,
+      `🏴‍☠️ "💨 80% 지점! 정상이 눈앞이다! Attacco! 라스트 스퍼트!"`,
+      `🏴‍☠️ "🏁 90% 진입! 심장을 쥐어짜라!! 모든 힘을 쏟아부어!! 🔥🔥"`,
     ];
   };
 
@@ -59,21 +59,21 @@ export const HillAnalysisModal: React.FC<HillAnalysisModalProps> = ({
     setMessages(next);
   };
 
-  // Rule-based fallback generator
+  // Rule-based fallback generator (Marco Pantani Persona)
   const handleAutoGenerateRule = () => {
     const aiMsgs = slopes.map((grade, idx) => {
       const stepPct = (idx + 1) * 10;
-      if (idx === 0) return `🔥 [${segment.name}] 출발! 경사도 ${grade}% 구간 진입. 페이스를 다듬으세요!`;
-      if (idx === 4) return `🏔️ 50% 절반 통과! 경사도 ${grade}%. 조금만 더 집중하세요!`;
-      if (idx === 8) return `💨 80% 지점! 경사도 ${grade}%. 정상이 눈앞입니다! 스퍼트 준비!`;
-      if (idx === 9) return `🏁 90% 라스트 스퍼트!! 경사도 ${grade}%. 남은 케이던스 올아웃!! 🔥`;
+      if (idx === 0) return `🏴‍☠️ "Andiamo! [${segment.name}] 출발! 경사도 ${grade}%. 해적처럼 치고 나가자! 🔥"`;
+      if (idx === 4) return `🏴‍☠️ "🏔️ 50% 절반 통과! 경사도 ${grade}%. Continua a lottare! 포기란 없다!"`;
+      if (idx === 8) return `🏴‍☠️ "💨 80% 지점! 경사도 ${grade}%. Attacco! 정상이 코앞이다 스퍼트!!"`;
+      if (idx === 9) return `🏴‍☠️ "🏁 90% 라스트!! 경사도 ${grade}%. Forza!! 올아웃 사냥 시작!! 🔥"`;
 
       if (grade >= 8) {
-        return `⚠️ ${stepPct}% 지점! 경사도 ${grade}% 급경사 벽! 댄싱으로 체중 실어 돌파하세요!`;
+        return `🏴‍☠️ "Mamma mia! ${stepPct}% 지점! 경사도 ${grade}% 급경사 벽! 댄싱으로 짓눌러!"`;
       } else if (grade >= 5) {
-        return `⚡ ${stepPct}% 지점! 경사도 ${grade}% 오르막. 케이던스 80+ 호흡 유지!`;
+        return `🏴‍☠️ "⚡ ${stepPct}% 지점! 경사도 ${grade}%. 케이던스 킵하고 심박 올려!"`;
       } else {
-        return `🚴‍♂️ ${stepPct}% 지점! 경사도 ${grade}% 완경사. 스피드 올리고 페이스 킵!`;
+        return `🏴‍☠️ "🚴‍♂️ ${stepPct}% 지점! 경사도 ${grade}%. 이탈리아 남자의 정열로 스피드 밟아!"`;
       }
     });
     setMessages(aiMsgs);
@@ -92,23 +92,24 @@ export const HillAnalysisModal: React.FC<HillAnalysisModalProps> = ({
       localStorage.setItem("deepseek_api_key", apiKey.trim());
 
       const prContext = bestAttempt
-        ? `이 구간의 최고 1등 기록(PR)은 ${Math.floor(bestAttempt.durationMs / 60000)}분 ${Math.floor((bestAttempt.durationMs % 60000) / 1000)}초 (평균 시속 ${bestAttempt.avgSpeed} km/h, 날짜 ${bestAttempt.date}) 입니다.`
-        : `이 구간은 아직 등록된 이전 주행 기록이 없는 첫 도전 언덕입니다.`;
+        ? `이 구간의 1등 최고 기록(PR)은 ${Math.floor(bestAttempt.durationMs / 60000)}분 ${Math.floor((bestAttempt.durationMs % 60000) / 1000)}초 (평균 시속 ${bestAttempt.avgSpeed} km/h, 날짜 ${bestAttempt.date}) 입니다.`
+        : `이 구간은 아직 등록된 주행 기록이 없는 첫 도전 언덕입니다.`;
 
-      const prompt = `당신은 자전거 라이딩 전담 프로 AI 트레이너 코치입니다.
-언덕 정보:
+      const prompt = `당신은 전설적인 이탈리아 클라이머 라이더 "마르코 판타니(Marco Pantani - Il Pirata)"입니다. 
+당신은 분홍색 져지(Maglia Rosa)와 해적 두건(Bandana)을 쓰고, 열정적이고 매우 수다스러운 이탈리아 클라이밍 지휘관 스타일로 유저에게 코칭합니다!
+
+언덕 데이터:
 - 이름: ${segment.name}
 - 총 거리: ${segment.distanceMeters}m
 - 획득고도: ${segment.elevationGainMeters}m
 - 평균 경사도: ${segment.avgGradePercent}%
 - 10단계 구간별 경사도 프로필: [${slopes.map((s, i) => `${(i + 1) * 10}%:${s}%`).join(", ")}]
-- 지난 주행 기록 상태: ${prContext}
-
-위 언덕 데이터와 주행 기록을 바탕으로, 라이더가 자전거를 타고 오르는 동안 10%부터 100%까지 총 10단계에 걸쳐 카카오톡 말풍선으로 표출될 10개의 코칭 메시지를 작성해 주세요.
+- 1등 PR 기록 상태: ${prContext}
 
 요구사항:
-1. 반드시 정확히 10개의 문자열 요소를 포함하는 JSON 배열 [ "msg1", "msg2", ..., "msg10" ] 형식으로만 응답해 주세요.
-2. 각 메시지는 카카오톡 이모티콘, 경사도 전술, 케이던스 팁, 1등 PR 대비 페이스 코칭을 포함하는 생동감 넘치는 2줄 이내 한국어 문장이어야 합니다.`;
+1. 반드시 마르코 판타니 특유의 수다스러운 이탈리아어 감탄사 ("Mamma mia!", "Andiamo!", "Hai la grinta!", "Continua a lottare!", "Attacco!", "Vittoria!")를 한국어와 섞어 사용하세요.
+2. 10%부터 100%까지 총 10단계에 걸쳐 카카오톡 말풍선으로 표출될 10개의 파이팅 넘치는 코칭 메시지 문자열을 작성하세요.
+3. 반드시 정확히 10개의 문자열 요소를 포함하는 JSON 배열 [ "msg1", "msg2", ..., "msg10" ] 형식으로만 응답해 주세요.`;
 
       const response = await fetch("https://api.deepseek.com/chat/completions", {
         method: "POST",
@@ -122,11 +123,11 @@ export const HillAnalysisModal: React.FC<HillAnalysisModalProps> = ({
             {
               role: "system",
               content:
-                "You are a professional cycling AI coach. Always output ONLY a valid JSON array containing exactly 10 string elements.",
+                "You are Marco Pantani, the legendary passionate Italian cycling climber (Il Pirata). Output ONLY a valid JSON array containing exactly 10 string elements in your signature talkative Italian-Korean cycling coach voice.",
             },
             { role: "user", content: prompt },
           ],
-          temperature: 0.7,
+          temperature: 0.8,
         }),
       });
 
