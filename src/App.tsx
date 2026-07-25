@@ -2519,6 +2519,7 @@ export default function App() {
         {showHillAnalysisModal && activeSegment && (
           <HillAnalysisModal
             segment={activeSegment}
+            bestAttempt={rankings[activeSegment.id] && rankings[activeSegment.id].length > 0 ? [...rankings[activeSegment.id]].sort((a, b) => a.durationMs - b.durationMs)[0] : null}
             onClose={() => setShowHillAnalysisModal(false)}
             onSaveStageMessages={handleSaveStageMessages}
           />
