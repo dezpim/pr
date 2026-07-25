@@ -54,6 +54,16 @@ export function useGoogleDrive() {
     localStorage.setItem("gdrive_client_id", clientId);
   }, [clientId]);
 
+  // Auto-detect client_id from URL query string (e.g. ?client_id=xxx) for quick mobile setup
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paramClientId = params.get("client_id");
+    if (paramClientId && paramClientId !== clientId) {
+      setClientId(paramClientId);
+      localStorage.setItem("gdrive_client_id", paramClientId);
+    }
+  }, [clientId]);
+
   // Load Google Identity Services script
   useEffect(() => {
     if (document.getElementById("google-gis-script")) return;
@@ -65,36 +75,66 @@ export function useGoogleDrive() {
     document.body.appendChild(script);
   }, []);
 
-  const login = useCallback(() => {
+  // Request Token (promptUser = false performs silent background token refresh)
+  const requestToken = useCallback((promptUser: boolean = true) => {
     if (!clientId) {
-      alert("Please configure Google Client ID first in settings.");
+      if (promptUser) alert("Please configure Google Client ID first in settings.");
       return;
     }
 
     const google = (window as any).google;
     if (!google) {
-      alert("Google Auth library not loaded yet. Try again in a second.");
+      if (promptUser) alert("Google Auth library not loaded yet. Try again in a second.");
       return;
     }
 
     const tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: clientId,
       scope: SCOPES,
+      prompt: promptUser ? "select_account" : "", // Empty prompt string performs silent background refresh!
       callback: (tokenResponse: any) => {
         if (tokenResponse && tokenResponse.access_token) {
           setAccessToken(tokenResponse.access_token);
+          localStorage.setItem("gdrive_access_token", tokenResponse.access_token);
+          localStorage.setItem("gdrive_token_timestamp", Date.now().toString());
           fetchUserInfo(tokenResponse.access_token);
         }
       },
     });
 
-    tokenClient.requestAccessToken();
+    tokenClient.requestAccessToken({ prompt: promptUser ? "select_account" : "" });
   }, [clientId]);
+
+  const login = useCallback(() => {
+    requestToken(true);
+  }, [requestToken]);
+
+  // Long-Lived Session: Silent auto-refresh token before 1-hour expiration (Every 45 minutes)
+  useEffect(() => {
+    const checkAndAutoRefresh = () => {
+      if (!accessToken || !clientId) return;
+      const tokenTimeStr = localStorage.getItem("gdrive_token_timestamp");
+      if (tokenTimeStr) {
+        const elapsedMs = Date.now() - parseInt(tokenTimeStr, 10);
+        if (elapsedMs > 45 * 60 * 1000) {
+          requestToken(false);
+        }
+      } else {
+        localStorage.setItem("gdrive_token_timestamp", Date.now().toString());
+      }
+    };
+
+    checkAndAutoRefresh();
+    const interval = setInterval(checkAndAutoRefresh, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [accessToken, clientId, requestToken]);
 
   const logout = useCallback(() => {
     setAccessToken(null);
     setUserEmail(null);
+    localStorage.removeItem("gdrive_access_token");
     localStorage.removeItem("gdrive_user_email");
+    localStorage.removeItem("gdrive_token_timestamp");
     setCatalog({ segments: [] });
     setRankings({});
   }, []);
@@ -116,20 +156,17 @@ export function useGoogleDrive() {
     }
   };
 
-  // Helper: check response and handle expired session (401)
+  // Helper: check response and handle expired session (401) with silent refresh
   const checkResponse = useCallback((res: Response, contextMsg: string) => {
     if (res.status === 401) {
-      setAccessToken(null);
-      setUserEmail(null);
-      localStorage.removeItem("gdrive_access_token");
-      localStorage.removeItem("gdrive_user_email");
-      throw new Error("Session expired. Please sign in with Google again.");
+      requestToken(false);
+      throw new Error("Session automatically refreshing in background. Please retry action.");
     }
     if (!res.ok) {
       throw new Error(`${contextMsg} (HTTP ${res.status})`);
     }
     return res;
-  }, []);
+  }, [requestToken]);
 
   // Helper: Find or create Leaderboard_Segments folder
   const findOrCreateFolder = async (token: string): Promise<string | null> => {

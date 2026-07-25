@@ -512,6 +512,10 @@ export default function App() {
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
+  // Sidebar collapse & Mobile drawer states
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() => localStorage.getItem("sidebar_collapsed") === "true");
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
+
   // Registration states
   const [gpxData, setGpxData] = useState<GPXData | null>(null);
   const [startIndex, setStartIndex] = useState<number>(0);
@@ -1207,21 +1211,50 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      {/* Sleek, Compact Left Sidebar Menu */}
-      <aside className="app-sidebar">
+      {/* Mobile Drawer Overlay Backdrop */}
+      {isMobileSidebarOpen && (
+        <div
+          className="mobile-sidebar-backdrop"
+          onClick={() => setIsMobileSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sleek, Collapsible Left Sidebar Menu */}
+      <aside className={`app-sidebar ${isSidebarCollapsed ? "collapsed" : ""} ${isMobileSidebarOpen ? "mobile-open" : ""}`}>
         <div
           className="sidebar-brand"
-          onClick={() => setActiveView("directory")}
+          onClick={() => {
+            setActiveView("directory");
+            setIsMobileSidebarOpen(false);
+          }}
           style={{ cursor: "pointer" }}
         >
           <span className="sidebar-logo-icon">🏆</span>
           <span className="sidebar-title">개인 리더보드</span>
+
+          <button
+            className="sidebar-collapse-toggle"
+            title={isSidebarCollapsed ? "메뉴 펼치기" : "메뉴 접기"}
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsSidebarCollapsed((prev) => {
+                const next = !prev;
+                localStorage.setItem("sidebar_collapsed", next ? "true" : "false");
+                return next;
+              });
+            }}
+          >
+            {isSidebarCollapsed ? "▶" : "◀"}
+          </button>
         </div>
 
         <nav className="sidebar-menu">
           <button
             className={`sidebar-item ${activeView === "directory" ? "active" : ""}`}
-            onClick={() => setActiveView("directory")}
+            onClick={() => {
+              setActiveView("directory");
+              setIsMobileSidebarOpen(false);
+            }}
           >
             <span className="sidebar-item-icon">📂</span>
             <span className="sidebar-item-text">전체 구간 목록</span>
@@ -1229,7 +1262,10 @@ export default function App() {
 
           <button
             className={`sidebar-item ${activeView === "recent_records" ? "active" : ""}`}
-            onClick={() => setActiveView("recent_records")}
+            onClick={() => {
+              setActiveView("recent_records");
+              setIsMobileSidebarOpen(false);
+            }}
           >
             <span className="sidebar-item-icon">🔥</span>
             <span className="sidebar-item-text">최근 기록 보기</span>
@@ -1246,6 +1282,7 @@ export default function App() {
                 setSegmentName("");
                 setDetectedClimbs([]);
                 setActiveView("editor");
+                setIsMobileSidebarOpen(false);
               }}
             >
               <span className="sidebar-item-icon">➕</span>
@@ -1255,7 +1292,10 @@ export default function App() {
 
           <button
             className={`sidebar-item ${activeView === "trophies" ? "active" : ""}`}
-            onClick={() => setActiveView("trophies")}
+            onClick={() => {
+              setActiveView("trophies");
+              setIsMobileSidebarOpen(false);
+            }}
           >
             <span className="sidebar-item-icon">🎖️</span>
             <span className="sidebar-item-text">나의 훈장 수집함</span>
@@ -1286,7 +1326,21 @@ export default function App() {
       <div className="app-main-content">
         {/* Top Header inside main content area */}
         <header className="app-header">
-          <div className="header-title-heading">
+          <div className="header-title-heading" style={{ display: "flex", alignItems: "center" }}>
+            <button
+              className="mobile-hamburger-btn"
+              title="메뉴 열기/접기"
+              onClick={() => {
+                if (window.innerWidth <= 768) {
+                  setIsMobileSidebarOpen(!isMobileSidebarOpen);
+                } else {
+                  setIsSidebarCollapsed(!isSidebarCollapsed);
+                }
+              }}
+            >
+              ☰
+            </button>
+
             <h2>
               {activeView === "directory" && "📂 전체 구간 목록 (디렉토리)"}
               {activeView === "recent_records" && "🔥 최근 주행 기록 전체 보기"}
@@ -1424,9 +1478,9 @@ export default function App() {
         {showSettings && (
           <div className="settings-modal">
             <div className="settings-card">
-              <h3>구글 API 설정</h3>
+              <h3>⚙️ 구글 API 설정 및 디바이스 연결</h3>
               <div className="form-group">
-                <label>OAuth Client ID</label>
+                <label>OAuth Client ID (Web Application)</label>
                 <input
                   type="text"
                   placeholder="Client ID를 입력하세요"
@@ -1434,6 +1488,51 @@ export default function App() {
                   onChange={(e) => setTempClientId(e.target.value)}
                 />
               </div>
+
+              {/* Long-Lived Session Persistence Explanation */}
+              <div className="form-group" style={{ marginTop: "12px", padding: "10px 12px", background: "#FFFBF7", border: "1px solid #FFE0CC", borderRadius: "8px" }}>
+                <div style={{ fontSize: "12px", fontWeight: "bold", color: "#E34F00", marginBottom: "4px" }}>
+                  🔒 장기 자동 로그인 세션 활성화 완료
+                </div>
+                <p style={{ fontSize: "11px", color: "#555", margin: 0, lineHeight: "1.4" }}>
+                  개인용 사용을 위해 <strong>무한 백그라운드 토큰 자동 연장(Silent Refresh)</strong> 기능이 적용되어 있습니다. 매 45분마다 Google 로그인 세션이 자동으로 무한 연장되므로 로그아웃을 누르기 전까지 세션이 끊기지 않고 지속 유지됩니다.
+                </p>
+              </div>
+
+              {/* Mobile Device OAuth Pairing Helper */}
+              {clientId && (
+                <div className="form-group" style={{ marginTop: "16px", paddingTop: "14px", borderTop: "1px solid #E6E6EB" }}>
+                  <label>📱 스마트폰 / 모바일 디바이스 OAuth 연결</label>
+                  <p style={{ fontSize: "11px", color: "#666", lineHeight: "1.4", margin: "4px 0 10px 0" }}>
+                    스마트폰 브라우저나 타 디바이스에서 아래 버튼을 누르면 Client ID가 자동으로 입력된 원클릭 링크가 복사됩니다.
+                  </p>
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: "11px" }}
+                      onClick={() => {
+                        const link = `${window.location.origin}${window.location.pathname}?client_id=${encodeURIComponent(clientId)}`;
+                        navigator.clipboard.writeText(link);
+                        alert("🎉 원클릭 모바일 연결 링크가 복사되었습니다!\n\n스마트폰 카카오톡이나 모바일 브라우저로 전송 후 열면 Client ID가 자동으로 설정됩니다.");
+                      }}
+                    >
+                      🔗 원클릭 모바일 연결 링크 복사
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: "11px" }}
+                      onClick={() => {
+                        navigator.clipboard.writeText(clientId);
+                        alert("🎉 Google Client ID가 복사되었습니다.");
+                      }}
+                    >
+                      📋 Client ID 복사
+                    </button>
+                  </div>
+                </div>
+              )}
               {accessToken && (
                 <div className="form-group" style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px solid #E6E6EB" }}>
                   <label>저장소 및 파일 관리</label>
