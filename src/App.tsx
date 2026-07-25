@@ -1528,6 +1528,22 @@ export default function App() {
                 </div>
               </div>
 
+              {/* DeepSeek AI API Key Input */}
+              <div className="form-group" style={{ marginTop: "14px" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "6px", color: "#45B7D1", fontWeight: "bold" }}>
+                  <span>🤖 DeepSeek AI API Key (deepseek-v4-flash)</span>
+                </label>
+                <input
+                  type="password"
+                  placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
+                  value={localStorage.getItem("deepseek_api_key") || ""}
+                  onChange={(e) => localStorage.setItem("deepseek_api_key", e.target.value.trim())}
+                />
+                <div style={{ fontSize: "11px", color: "#666", marginTop: "6px", lineHeight: "1.45", background: "#F0F8FF", padding: "8px 10px", borderRadius: "6px" }}>
+                  🔒 <strong>보안 안전 보장:</strong> 입력하신 DeepSeek API 키는 본인 웹 브라우저 로컬(localStorage)에만 보관되며 외부 서버로 절대 전송되지 않습니다.
+                </div>
+              </div>
+
               {/* Long-Lived Session Persistence Explanation */}
               <div className="form-group" style={{ marginTop: "12px", padding: "10px 12px", background: "#FFFBF7", border: "1px solid #FFE0CC", borderRadius: "8px" }}>
                 <div style={{ fontSize: "12px", fontWeight: "bold", color: "#E34F00", marginBottom: "4px" }}>
