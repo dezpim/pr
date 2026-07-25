@@ -889,6 +889,42 @@ export function useGoogleDrive() {
     }
   };
 
+  const fetchUnanalyzedRides = async (): Promise<{ id: string; name: string }[]> => {
+    if (!accessToken) return [];
+    try {
+      const folderId = await findOrCreateFolder(accessToken);
+      if (!folderId) return [];
+
+      const query = encodeURIComponent(`'${folderId}' in parents and (name contains 'ride_' or name contains '.gpx') and trashed = false`);
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,createdTime)&spaces=drive`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      checkResponse(res, "미분석 주행 기록 검색 실패");
+      const data = await res.json();
+
+      const analyzedIds = JSON.parse(localStorage.getItem("analyzed_ride_file_ids") || "[]");
+      const unanalyzed = (data.files || []).filter((f: any) => f.name.toLowerCase().endsWith(".gpx") && f.name !== "catalog.json" && !analyzedIds.includes(f.id));
+      return unanalyzed.map((f: any) => ({ id: f.id, name: f.name }));
+    } catch (e) {
+      console.error("미분석 주행 기록 검색 실패:", e);
+      return [];
+    }
+  };
+
+  const downloadDriveFileContent = async (fileId: string): Promise<string | null> => {
+    if (!accessToken) return null;
+    try {
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      checkResponse(res, "파일 다운로드 실패");
+      return await res.text();
+    } catch (e) {
+      console.error("파일 다운로드 실패:", e);
+      return null;
+    }
+  };
+
   return {
     accessToken,
     clientId,
@@ -904,6 +940,8 @@ export function useGoogleDrive() {
     renameSegment,
     updateSegmentDescription,
     updateSegmentStageMessages,
+    fetchUnanalyzedRides,
+    downloadDriveFileContent,
     downloadGPXFile,
     addAttemptToCloud,
     deleteAttemptFromCloud,

@@ -456,12 +456,27 @@ export default function App() {
     renameSegment,
     updateSegmentDescription,
     updateSegmentStageMessages,
+    fetchUnanalyzedRides,
+    downloadDriveFileContent,
     downloadGPXFile,
     addAttemptToCloud,
     deleteAttemptFromCloud,
     updateAttemptMemo,
     cleanOrphanedFiles,
   } = useGoogleDrive();
+
+  // Auto-detect newly arrived ride GPX files from phone OsmAnd app
+  const [pendingRide, setPendingRide] = useState<{ id: string; name: string } | null>(null);
+
+  useEffect(() => {
+    if (accessToken) {
+      fetchUnanalyzedRides().then((rides) => {
+        if (rides && rides.length > 0) {
+          setPendingRide(rides[0]);
+        }
+      });
+    }
+  }, [accessToken]);
 
   // Navigation views: 'directory' | 'leaderboard' | 'editor' | 'recent_records' | 'trophies'
   const [activeView, setActiveView] = useState<"directory" | "leaderboard" | "editor" | "recent_records" | "trophies">("directory");
@@ -828,135 +843,154 @@ export default function App() {
     }
   };
 
-  // Shared process for global GPX upload/drop
-  const processGlobalRideGpxFile = async (file: File) => {
+  // Core process for matching global GPX text against all segments
+  const processGlobalRideGpxText = async (text: string) => {
     if (catalog.segments.length === 0) return;
 
+    try {
+      const parsed = parseGPX(text);
+      const matchedAttempts: { segmentName: string; durationMs: number; avgSpeed: number; id: string; attemptData: Omit<CloudAttempt, "id"> }[] = [];
+
+      for (const segment of catalog.segments) {
+        const attemptData = extractAttemptFromRideGPX(parsed.points, segment);
+        if (attemptData) {
+          matchedAttempts.push({
+            segmentName: segment.name,
+            durationMs: attemptData.durationMs,
+            avgSpeed: attemptData.avgSpeed,
+            id: segment.id,
+            attemptData
+          });
+        }
+      }
+
+      if (matchedAttempts.length === 0) {
+        alert("업로드한 주행 기록에 카탈로그 구간과 일치하는 오르막이 없습니다.");
+        return;
+      }
+
+      // Set explicit session IDs for newly uploaded segments
+      setRecentUploadSessionSegIds(matchedAttempts.map(m => m.id));
+
+      // Upload matched attempts
+      let successCount = 0;
+      let duplicateCount = 0;
+      const matchedLines: string[] = [];
+      const notificationItems: { segmentId: string; segmentName: string; durationMs: number; rank: number; isPR: boolean }[] = [];
+
+      for (const match of matchedAttempts) {
+        const res = await addAttemptToCloud(match.id, match.attemptData);
+        if (res === "added") {
+          successCount++;
+          // Calculate rank for this attempt
+          const existingAttempts = rankings[match.id] || [];
+          const sorted = [...existingAttempts, { id: "temp", ...match.attemptData }].sort((a, b) => a.durationMs - b.durationMs);
+          const rankIndex = sorted.findIndex(a => a.date === match.attemptData.date && Math.abs(a.durationMs - match.durationMs) < 1000);
+          const rank = rankIndex !== -1 ? rankIndex + 1 : sorted.length;
+          const isPR = rank === 1;
+
+          notificationItems.push({
+            segmentId: match.id,
+            segmentName: match.segmentName,
+            durationMs: match.durationMs,
+            rank,
+            isPR,
+          });
+
+          if (isPR) {
+            matchedLines.push(`• ${match.segmentName}: 1등 👑 (개인 최고 기록!) (${formatMsToTime(match.durationMs)})`);
+          } else {
+            matchedLines.push(`• ${match.segmentName}: ${rank}등 (${formatMsToTime(match.durationMs)})`);
+          }
+        } else if (res === "duplicate") {
+          duplicateCount++;
+        }
+      }
+
+      if (successCount > 0) {
+        // Push to persistent notifications history
+        const newNotif: AppNotification = {
+          id: Date.now().toString(),
+          date: new Date().toLocaleString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+          title: `🚴 새 주행 기록 분석 완료 (${successCount}개 구간 매칭)`,
+          read: false,
+          matches: notificationItems,
+        };
+        setNotifications((prev) => [newNotif, ...prev].slice(0, 30));
+
+        // Evaluate Trophies for this upload session
+        const newlyUnlocked: TrophyDefinition[] = [];
+        const existingUnlockedIds = unlockedTrophies.map((u) => u.trophyId);
+        const allUserAttempts = getAllRecentRideAttempts();
+
+        for (const match of matchedAttempts) {
+          const seg = catalog.segments.find((s) => s.id === match.id);
+          if (!seg) continue;
+          const existingSegAttempts = rankings[match.id] || [];
+
+          const ctx = {
+            segment: seg,
+            attempt: { id: "temp", ...match.attemptData },
+            existingAttempts: existingSegAttempts,
+            allUserAttempts,
+          };
+
+          const unlockedForMatch = evaluateNewTrophies(ctx, [...existingUnlockedIds, ...newlyUnlocked.map((t) => t.id)]);
+          for (const t of unlockedForMatch) {
+            newlyUnlocked.push(t);
+            setUnlockedTrophies((prev) => [
+              ...prev,
+              {
+                id: `${t.id}_${Date.now()}_${Math.random()}`,
+                trophyId: t.id,
+                unlockedAt: new Date().toLocaleDateString("ko-KR"),
+                segmentId: seg.id,
+                segmentName: seg.name,
+                attemptId: Date.now().toString(),
+              },
+            ]);
+          }
+        }
+
+        if (newlyUnlocked.length > 0) {
+          setNewTrophiesModalData(newlyUnlocked);
+        }
+
+        let msg = `🎉 주행 기록 분석 및 등록 완료!\n\n📍 분석 및 매칭된 구간 순위 결과:\n${matchedLines.join("\n")}`;
+        if (duplicateCount > 0) {
+          msg += `\n\n(ℹ️ 이미 등록된 중복 기록 ${duplicateCount}개는 자동으로 제외되었습니다.)`;
+        }
+        alert(msg);
+      } else if (duplicateCount > 0) {
+        alert(`ℹ️ 업로드한 GPX 파일의 주행 기록(${duplicateCount}개 구간)은 이미 모두 리더보드에 등록되어 있습니다.`);
+      }
+    } catch (err) {
+      alert("GPX 파일 파싱에 실패했습니다. 올바른 GPX 형식인지 확인해 주세요.");
+    }
+  };
+
+  const processGlobalRideGpxFile = async (file: File) => {
     const reader = new FileReader();
     reader.onload = async (event) => {
       const text = event.target?.result as string;
-      try {
-        const parsed = parseGPX(text);
-        const matchedAttempts: { segmentName: string; durationMs: number; avgSpeed: number; id: string; attemptData: Omit<CloudAttempt, "id"> }[] = [];
-
-        for (const segment of catalog.segments) {
-          const attemptData = extractAttemptFromRideGPX(parsed.points, segment);
-          if (attemptData) {
-            matchedAttempts.push({
-              segmentName: segment.name,
-              durationMs: attemptData.durationMs,
-              avgSpeed: attemptData.avgSpeed,
-              id: segment.id,
-              attemptData
-            });
-          }
-        }
-
-        if (matchedAttempts.length === 0) {
-          alert("업로드한 GPX 파일에서 매칭된 구간 주행 기록을 찾을 수 없습니다. (오차범위 150m)");
-          return;
-        }
-
-        // Set explicit session IDs for newly uploaded segments
-        setRecentUploadSessionSegIds(matchedAttempts.map(m => m.id));
-
-        // Upload matched attempts
-        let successCount = 0;
-        let duplicateCount = 0;
-        const matchedLines: string[] = [];
-        const notificationItems: { segmentId: string; segmentName: string; durationMs: number; rank: number; isPR: boolean }[] = [];
-
-        for (const match of matchedAttempts) {
-          const res = await addAttemptToCloud(match.id, match.attemptData);
-          if (res === "added") {
-            successCount++;
-            // Calculate rank for this attempt
-            const existingAttempts = rankings[match.id] || [];
-            const sorted = [...existingAttempts, { id: "temp", ...match.attemptData }].sort((a, b) => a.durationMs - b.durationMs);
-            const rankIndex = sorted.findIndex(a => a.date === match.attemptData.date && Math.abs(a.durationMs - match.durationMs) < 1000);
-            const rank = rankIndex !== -1 ? rankIndex + 1 : sorted.length;
-            const isPR = rank === 1;
-
-            notificationItems.push({
-              segmentId: match.id,
-              segmentName: match.segmentName,
-              durationMs: match.durationMs,
-              rank,
-              isPR,
-            });
-
-            if (isPR) {
-              matchedLines.push(`• ${match.segmentName}: 1등 👑 (개인 최고 기록!) (${formatMsToTime(match.durationMs)})`);
-            } else {
-              matchedLines.push(`• ${match.segmentName}: ${rank}등 (${formatMsToTime(match.durationMs)})`);
-            }
-          } else if (res === "duplicate") {
-            duplicateCount++;
-          }
-        }
-
-        if (successCount > 0) {
-          // Push to persistent notifications history
-          const newNotif: AppNotification = {
-            id: Date.now().toString(),
-            date: new Date().toLocaleString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }),
-            title: `🚴 새 주행 기록 분석 완료 (${successCount}개 구간 매칭)`,
-            read: false,
-            matches: notificationItems,
-          };
-          setNotifications((prev) => [newNotif, ...prev].slice(0, 30));
-
-          // Evaluate Trophies for this upload session
-          const newlyUnlocked: TrophyDefinition[] = [];
-          const existingUnlockedIds = unlockedTrophies.map((u) => u.trophyId);
-          const allUserAttempts = getAllRecentRideAttempts();
-
-          for (const match of matchedAttempts) {
-            const seg = catalog.segments.find((s) => s.id === match.id);
-            if (!seg) continue;
-            const existingSegAttempts = rankings[match.id] || [];
-
-            const ctx = {
-              segment: seg,
-              attempt: { id: "temp", ...match.attemptData },
-              existingAttempts: existingSegAttempts,
-              allUserAttempts,
-            };
-
-            const unlockedForMatch = evaluateNewTrophies(ctx, [...existingUnlockedIds, ...newlyUnlocked.map((t) => t.id)]);
-            for (const t of unlockedForMatch) {
-              newlyUnlocked.push(t);
-              setUnlockedTrophies((prev) => [
-                ...prev,
-                {
-                  id: `${t.id}_${Date.now()}_${Math.random()}`,
-                  trophyId: t.id,
-                  unlockedAt: new Date().toLocaleDateString("ko-KR"),
-                  segmentId: seg.id,
-                  segmentName: seg.name,
-                  attemptId: Date.now().toString(),
-                },
-              ]);
-            }
-          }
-
-          if (newlyUnlocked.length > 0) {
-            setNewTrophiesModalData(newlyUnlocked);
-          }
-
-          let msg = `🎉 주행 기록 분석 및 등록 완료!\n\n📍 분석 및 매칭된 구간 순위 결과:\n${matchedLines.join("\n")}`;
-          if (duplicateCount > 0) {
-            msg += `\n\n(ℹ️ 이미 등록된 중복 기록 ${duplicateCount}개는 자동으로 제외되었습니다.)`;
-          }
-          alert(msg);
-        } else if (duplicateCount > 0) {
-          alert(`ℹ️ 업로드한 GPX 파일의 주행 기록(${duplicateCount}개 구간)은 이미 모두 리더보드에 등록되어 있습니다.`);
-        }
-      } catch (err) {
-        alert("GPX 파일 파싱에 실패했습니다. 올바른 GPX 형식인지 확인해 주세요.");
-      }
+      await processGlobalRideGpxText(text);
     };
     reader.readAsText(file);
+  };
+
+  const handleAnalyzePendingRide = async (ride: { id: string; name: string }) => {
+    const gpxXml = await downloadDriveFileContent(ride.id);
+    if (!gpxXml) {
+      alert("구글 드라이브 주행 GPX 다운로드 실패.");
+      return;
+    }
+    await processGlobalRideGpxText(gpxXml);
+
+    const analyzedIds = JSON.parse(localStorage.getItem("analyzed_ride_file_ids") || "[]");
+    analyzedIds.push(ride.id);
+    localStorage.setItem("analyzed_ride_file_ids", JSON.stringify(analyzedIds));
+
+    setPendingRide(null);
   };
 
   const handleGlobalRideGpxUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2540,6 +2574,36 @@ export default function App() {
             onSaveStageMessages={handleSaveStageMessages}
           />
         )}
+
+        {/* Auto-detected Phone Ride GPX Analysis Modal Prompt */}
+        {pendingRide && (
+          <div className="modal-backdrop" onClick={() => setPendingRide(null)}>
+            <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "540px", textAlign: "center", border: "2px solid #FC6100", padding: "28px 24px" }}>
+              <span style={{ fontSize: "52px" }}>🚴‍♂️</span>
+              <h3 style={{ color: "#FC6100", margin: "12px 0 6px", fontSize: "20px" }}>새로운 주행 기록 수신 완료!</h3>
+              <p style={{ fontSize: "14px", color: "#555", lineHeight: "1.6", margin: "0 0 20px" }}>
+                스마트폰에서 구글 클라우드로 <strong>[{pendingRide.name}]</strong> 주행 기록이 자동 수신되었습니다.<br />
+                지금 바로 구간 랭킹 분석 및 훈장 해금을 진행하시겠습니까?
+              </p>
+              <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+                <button
+                  className="btn btn-primary"
+                  style={{ padding: "12px 24px", fontWeight: "bold", fontSize: "14px" }}
+                  onClick={() => handleAnalyzePendingRide(pendingRide)}
+                >
+                  📊 지금 바로 자동 분석하기
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{ padding: "12px 20px", fontSize: "14px" }}
+                  onClick={() => setPendingRide(null)}
+                >
+                  나중에
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
 
@@ -2555,5 +2619,5 @@ export default function App() {
       />
     )}
   </div>
-  );
-}
+);
+};
