@@ -349,9 +349,26 @@ export const HillAnalysisModal: React.FC<HillAnalysisModalProps> = ({
                       marginBottom: "8px",
                     }}
                   >
-                    <span style={{ fontSize: "13px", fontWeight: "bold", color: "#FEE500" }}>
-                      Stage {idx + 1} ({idx * 10}% ~ {(idx + 1) * 10}%)
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <div
+                        style={{
+                          width: "28px",
+                          height: "28px",
+                          borderRadius: "50%",
+                          backgroundColor: "#2C2C35",
+                          border: "1.5px solid #FEE500",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "16px",
+                        }}
+                      >
+                        {["😎", "🚴‍♂️", "💪", "💦", "🔥", "⚔️", "🥵", "⚡", "🤩", "👑"][idx]}
+                      </div>
+                      <span style={{ fontSize: "13px", fontWeight: "bold", color: "#FEE500" }}>
+                        Stage {idx + 1} ({idx * 10}% ~ {(idx + 1) * 10}%)
+                      </span>
+                    </div>
                     <span
                       style={{
                         backgroundColor: badgeColor,
@@ -373,11 +390,12 @@ export const HillAnalysisModal: React.FC<HillAnalysisModalProps> = ({
                       width: "100%",
                       backgroundColor: "#16161C",
                       border: "1px solid #444452",
-                      borderRadius: "6px",
-                      padding: "8px 10px",
+                      borderRadius: "8px",
+                      padding: "10px 12px",
                       color: "#FFF",
                       fontSize: "13px",
                       boxSizing: "border-box",
+                      fontWeight: "500",
                     }}
                   />
                 </div>
