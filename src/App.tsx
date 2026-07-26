@@ -510,10 +510,98 @@ export default function App() {
   // Markdown Description Modal states
   const [showDescModal, setShowDescModal] = useState<boolean>(false);
   const [descText, setDescText] = useState<string>("");
+  const [aiDescLoading, setAiDescLoading] = useState<boolean>(false);
 
   const handleOpenDescModal = (currentDesc: string = "") => {
     setDescText(currentDesc);
     setShowDescModal(true);
+  };
+
+  const handleGenerateAiDescription = async (seg?: CatalogSegment | null) => {
+    const targetSeg = seg || activeSegment;
+    if (!targetSeg) return;
+
+    const apiKey = localStorage.getItem("deepseek_api_key") || "";
+    setAiDescLoading(true);
+
+    if (apiKey.trim()) {
+      try {
+        const prompt = `당신은 이탈리아의 전설적인 클라이머 마르코 판타니(Marco Pantani, "Il Pirata")입니다.
+수다스럽고 정열적인 이탈리아 클라이머 말투(Mamma mia!, Andiamo!, Forza!, Attacco! 등)로 다음 업힐 구간에 대한 마크다운(Markdown) 코스 분석 및 공략 노트를 작성해주세요.
+
+[구간 정보]
+- 구간명: ${targetSeg.name}
+- 총 거리: ${(targetSeg.distanceMeters / 1000).toFixed(2)} km
+- 획득고도: ${targetSeg.elevationGainMeters} m
+- 평균 경사도: ${targetSeg.avgGradePercent}%
+
+[작성 가이드]
+1. # ⛰️ ${targetSeg.name} 공략 가이드 (by 마르코 판타니 🏴‍☠️)
+2. ## 📊 구간 요약 분석 (거리, 획득고도, 평균경사도 느낌)
+3. ## ⚔️ 마르코 판타니의 100% 공략법 (케이던스 유지, 댄싱 핑거어택 타이밍, 호흡법)
+4. ## ⚠️ 주의 구간 (노면, 경사도 급변 구간, 체력 안배)
+5. ## 🏆 1등 PR 파괴 멘탈 코칭
+
+특수 코드블록 태그 없이 바로 표출 가능한 순수 마크다운으로 작성해 주세요.`;
+
+        const response = await fetch("https://api.deepseek.com/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey.trim()}`,
+          },
+          body: JSON.stringify({
+            model: "deepseek-v4-flash",
+            messages: [
+              { role: "system", content: "You are legendary Italian cycling climber Marco Pantani (Il Pirata). Generate energetic, detailed cycling climb strategy guides in Markdown." },
+              { role: "user", content: prompt },
+            ],
+            temperature: 0.7,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const aiText = data.choices[0]?.message?.content || "";
+          if (aiText) {
+            setDescText(aiText);
+            setShowDescModal(true);
+            setAiDescLoading(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("DeepSeek API error, falling back to rule-based:", err);
+      }
+    }
+
+    // Rule-based fallback if no API key or network error
+    const distKm = (targetSeg.distanceMeters / 1000).toFixed(2);
+    const grade = targetSeg.avgGradePercent;
+    const fallbackMarkdown = `# ⛰️ ${targetSeg.name} 공략 가이드 (by 마르코 판타니 🏴‍☠️)
+
+Mamma mia! **${targetSeg.name}** (${distKm}km, 획득고도 ${targetSeg.elevationGainMeters}m) 공략 노트다! Andiamo!! 🔥
+
+## 📊 코스 프로필 요약
+- **총 거리**: ${distKm} km
+- **획득 고도**: ${targetSeg.elevationGainMeters} m
+- **평균 경사도**: ${grade}% ${grade >= 8.0 ? "(🔥 급경사 마의 구간)" : grade >= 5.0 ? "(⚡ 완만한 수수한 업힐)" : "(🚴 초보자도 타기 좋은 페이스 구간)"}
+
+## ⚔️ 마르코 판타니의 업힐 공략 팁
+1. **초반 30% 구간**: 서두르지 마라! 케이던스 **80~85 rpm**으로 호흡을 안정시키고 페이스를 고정해!
+2. **중반 50% 절반 지점**: 경사가 높아지는 순간, 시트 뒤쪽으로 엉덩이를 옮기고 **체중을 페달에 얹어 밀어라!** Continua a lottare!
+3. **후반 80%~정상 지점**: 드디어 댄싱(Dancing) 타임이다! 핸들바 하단을 잡고 **폭발적인 피치 업! Attacco!!** ⚡
+
+## ⚠️ 주의사항 & 체력 안배
+- **노면 & 호흡**: 오버페이스로 오버히트되지 않도록 깊은 복식호흡 유지!
+- **기본 기어비**: 34T-28T~30T 조화로 무릎 부담 방지!
+
+## 🏆 마르코 판타니의 한마디
+> *"Vittoria! 넌 이미 이 언덕을 제패할 실력을 갖추었다. 두건을 묶고 정상으로 치고 올라가라! Forza!!"* 🏴‍☠️`;
+
+    setDescText(fallbackMarkdown);
+    setShowDescModal(true);
+    setAiDescLoading(false);
   };
 
   const handleSaveDescModal = async () => {
@@ -2096,6 +2184,15 @@ export default function App() {
                   </button>
                   <button
                     className="btn btn-secondary btn-sm edit-seg-btn-small"
+                    style={{ color: "#61AFEF", backgroundColor: "#1E222A", border: "1px solid #3B4048", fontWeight: "bold" }}
+                    onClick={() => handleGenerateAiDescription(activeSegment)}
+                    disabled={aiDescLoading}
+                    title="DeepSeek AI(마르코 판타니)가 구간 분석 & 공략 마크다운 노트를 자동 작성합니다"
+                  >
+                    {aiDescLoading ? "🤖 AI 작성 중..." : "🤖 AI 설명"}
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-sm edit-seg-btn-small"
                     style={{ color: "#FEE500", backgroundColor: "#2A2A35", border: "1px solid #444455", fontWeight: "bold" }}
                     onClick={() => setShowHillAnalysisModal(true)}
                     title="언덕 10단계 구간 분석 및 AI 트레이너 말풍선 코칭 설정"
@@ -2124,15 +2221,25 @@ export default function App() {
 
               {/* Segment Markdown Description Box */}
               <div className="segment-desc-card">
-                <div className="segment-desc-header">
+                <div className="segment-desc-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
                   <h4>📝 구간 정보 & 마크다운 노트</h4>
-                  <button
-                    className="btn btn-secondary btn-sm"
-                    style={{ fontSize: "11px", padding: "4px 8px" }}
-                    onClick={() => handleOpenDescModal(activeSegment.descriptionMarkdown || "")}
-                  >
-                    {activeSegment.descriptionMarkdown ? "✏️ 설명 수정" : "➕ 설명 작성"}
-                  </button>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: "11px", padding: "4px 10px", color: "#61AFEF", backgroundColor: "#1E222A", border: "1px solid #3B4048", fontWeight: "bold" }}
+                      onClick={() => handleGenerateAiDescription(activeSegment)}
+                      disabled={aiDescLoading}
+                    >
+                      {aiDescLoading ? "🤖 AI 작성 중..." : "🤖 AI 설명 생성"}
+                    </button>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: "11px", padding: "4px 10px" }}
+                      onClick={() => handleOpenDescModal(activeSegment.descriptionMarkdown || "")}
+                    >
+                      {activeSegment.descriptionMarkdown ? "✏️ 설명 수정" : "➕ 설명 작성"}
+                    </button>
+                  </div>
                 </div>
                 {activeSegment.descriptionMarkdown ? (
                   <MarkdownRenderer content={activeSegment.descriptionMarkdown} />
@@ -2531,9 +2638,19 @@ export default function App() {
         {showDescModal && (
           <div className="modal-backdrop" onClick={() => setShowDescModal(false)}>
             <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "680px", width: "90%" }}>
-              <h3>📝 구간 정보 & 마크다운 노트 편집</h3>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                <h3 style={{ margin: 0 }}>📝 구간 정보 & 마크다운 노트 편집</h3>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: "11px", color: "#61AFEF", backgroundColor: "#1E222A", border: "1px solid #3B4048", fontWeight: "bold", padding: "5px 10px" }}
+                  onClick={() => handleGenerateAiDescription(activeSegment)}
+                  disabled={aiDescLoading}
+                >
+                  {aiDescLoading ? "🤖 AI 생성 중..." : "🤖 DeepSeek AI로 자동 작성"}
+                </button>
+              </div>
               <p style={{ fontSize: "12px", color: "#666", marginBottom: "12px" }}>
-                구간 공략 팁, 신호등 위치, 주의사항 등을 마크다운(# 제목, **강조**, - 리스트)으로 기록해보세요.
+                구간 공략 팁, 신호등 위치, 주의사항 등을 마크다운(# 제목, **강조**, - 리스트)으로 기록하거나 AI 버튼을 눌러 자동 생성해보세요.
               </p>
               <textarea
                 style={{ width: "100%", height: "160px", borderRadius: "8px", padding: "12px", border: "1px solid #D1D1D6", fontFamily: "monospace", fontSize: "13px", resize: "vertical" }}
