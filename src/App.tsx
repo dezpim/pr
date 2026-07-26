@@ -511,6 +511,7 @@ export default function App() {
   const [showDescModal, setShowDescModal] = useState<boolean>(false);
   const [descText, setDescText] = useState<string>("");
   const [aiDescLoading, setAiDescLoading] = useState<boolean>(false);
+  const [isDescFolded, setIsDescFolded] = useState<boolean>(false);
 
   const handleOpenDescModal = (currentDesc: string = "") => {
     setDescText(currentDesc);
@@ -2221,9 +2222,18 @@ Mamma mia! **${targetSeg.name}** (${distKm}km, 획득고도 ${targetSeg.elevatio
 
               {/* Segment Markdown Description Box */}
               <div className="segment-desc-card">
-                <div className="segment-desc-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
-                  <h4>📝 구간 정보 & 마크다운 노트</h4>
-                  <div style={{ display: "flex", gap: "6px" }}>
+                <div className="segment-desc-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: isDescFolded ? "0" : "10px" }}>
+                  <h4 style={{ cursor: "pointer", userSelect: "none" }} onClick={() => setIsDescFolded(!isDescFolded)}>
+                    📝 구간 정보 & 마크다운 노트 {isDescFolded ? "🔽" : "🔼"}
+                  </h4>
+                  <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: "11px", padding: "4px 8px", backgroundColor: "#2A2A35", color: "#A0A0AA", border: "1px solid #444455", fontWeight: "bold" }}
+                      onClick={() => setIsDescFolded(!isDescFolded)}
+                    >
+                      {isDescFolded ? "💬 펼치기 🔽" : "💬 접기 🔼"}
+                    </button>
                     <button
                       className="btn btn-secondary btn-sm"
                       style={{ fontSize: "11px", padding: "4px 10px", color: "#61AFEF", backgroundColor: "#1E222A", border: "1px solid #3B4048", fontWeight: "bold" }}
@@ -2241,12 +2251,14 @@ Mamma mia! **${targetSeg.name}** (${distKm}km, 획득고도 ${targetSeg.elevatio
                     </button>
                   </div>
                 </div>
-                {activeSegment.descriptionMarkdown ? (
-                  <MarkdownRenderer content={activeSegment.descriptionMarkdown} />
-                ) : (
-                  <div style={{ fontSize: "12px", color: "#8E8E93", fontStyle: "italic" }}>
-                    등록된 구간 설명이 없습니다. "➕ 설명 작성" 버튼을 눌러 구간 공략법, 주의사항, 마크다운 노트를 기록해보세요!
-                  </div>
+                {!isDescFolded && (
+                  activeSegment.descriptionMarkdown ? (
+                    <MarkdownRenderer content={activeSegment.descriptionMarkdown} />
+                  ) : (
+                    <div style={{ fontSize: "12px", color: "#8E8E93", fontStyle: "italic" }}>
+                      등록된 구간 설명이 없습니다. "➕ 설명 작성" 버튼을 눌러 구간 공략법, 주의사항, 마크다운 노트를 기록해보세요!
+                    </div>
+                  )
                 )}
               </div>
 
